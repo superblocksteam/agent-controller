@@ -1,0 +1,33 @@
+# Dirs
+logs/
+build/
+dist/
+data/
+docker/data/**/*
+
+# Typescript
+*.tsbuildinfo
+
+# Coverage
+coverage/
+
+# API keys and secrets
+.env
+*.pem
+
+# Dependency
+node_modules
+
+# Lint
+.eslintcache 
+
+# Misc
+.DS_Store
+*.log
+*.swp
+
+# Editor
+.vscode/*
+
+# pycache
+__pycache__/
