@@ -156,11 +156,13 @@ router.post('/check-auth', async (req: Request, res: Response, next: NextFunctio
             new ResponseWrapper<any>({ data: { authenticated: hasToken } })
           );
         }
+        return;
+      }
+      default:
         res.send(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           new ResponseWrapper<any>({ data: { authenticated: hasToken } })
         );
-      }
     }
   } catch (err) {
     addDiagnosticTagsToError(err, { datasourceId });
