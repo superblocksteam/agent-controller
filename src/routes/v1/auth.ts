@@ -8,7 +8,9 @@ import {
   RestApiIntegrationAuthType,
   TokenType,
   TokenScope,
-  RestApiIntegrationDatasourceConfiguration
+  RestApiIntegrationDatasourceConfiguration,
+  FORWARDED_COOKIE_DELIMITER,
+  FORWARDED_COOKIE_PREFIX
 } from '@superblocksteam/shared';
 import { relayDelegateFromRequest } from '@superblocksteam/shared-backend';
 import axios from 'axios';
@@ -300,6 +302,19 @@ router.post('/exchange-code', async (req: Request, res: Response, next: NextFunc
   } catch (err) {
     next(err);
   }
+});
+
+router.get('/login-cookie', async (req: Request, res: Response) => {
+  const domain = req.query.domain;
+  const name = req.query.key;
+  const value = req.query.value;
+
+  //TODO expiry
+  res.cookie(`${FORWARDED_COOKIE_PREFIX}${domain}${FORWARDED_COOKIE_DELIMITER}${name}`, value, {
+    ...HTTP_SECURE_COOKIE_OPTIONS,
+    maxAge: 90 * 24 * 60 * 60 * 1000
+  });
+  res.redirect(process.env.__SUPERBLOCKS_AGENT_SERVER_URL);
 });
 
 export default router;

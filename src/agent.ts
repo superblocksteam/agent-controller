@@ -97,6 +97,8 @@ logger.debug('Debug logging enabled');
 // sending large params for api/execute endpoint may result in
 // parse errors if json size > 50mb. Default limit is 10mb
 app.use(express.json({ limit: envs.get('SUPERBLOCKS_AGENT_JSON_PARSE_LIMIT') }));
+// Parse URL-encoded bodies using qs library
+app.use(express.urlencoded({ extended: true }));
 
 // Compression (disable if gzip is enabled in reverse proxy already)
 if (envs.get('SUPERBLOCKS_AGENT_COMPRESSION_DISABLE') !== 'true') {

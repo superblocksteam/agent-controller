@@ -7,7 +7,7 @@ import {
   CORRELATION_ID,
   SUPERBLOCKS_REQUEST_ID_HEADER
 } from '@superblocksteam/shared';
-import { relayDelegateFromRequest } from '@superblocksteam/shared-backend';
+import { relayDelegateFromRequest, sanitizeAgentKey } from '@superblocksteam/shared-backend';
 import express, { NextFunction, Request, Response } from 'express';
 import multer from 'multer';
 import autoReap from 'multer-autoreap';
@@ -15,7 +15,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { fetchAndExecute } from '../../controllers/api';
 import { SUPERBLOCKS_AGENT_KEY } from '../../env';
 import { findFirstApiExecutionError } from '../../utils/api';
-import { sanitizeAgentKey } from '../../utils/file';
 import { apiCount, ApiStatus, incrementCount } from '../../utils/metrics';
 import { agentCredsFromRequestJwt } from '../../utils/request';
 import { activateKeepAliveProbes } from '../../utils/socket';

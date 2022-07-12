@@ -11,7 +11,10 @@ import {
   RbacUnauthorizedError,
   UnauthorizedError,
   TooManyRequestsError,
-  userAccessibleTokens
+  userAccessibleTokens,
+  ForwardedCookies,
+  FORWARDED_COOKIE_PREFIX,
+  FORWARDED_COOKIE_DELIMITER
 } from '@superblocksteam/shared';
 import { FetchAndExecuteProps, RelayDelegate, RequestFiles } from '@superblocksteam/shared-backend';
 import ApiExecutor, { RecursionContext } from '../api/ApiExecutor';
@@ -41,8 +44,7 @@ interface ExecuteApiProps {
   files?: RequestFiles;
   parentAuthContexts?: AuthContext;
   executionParams?: ExecutionParam[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  cookies?: Record<string, any>;
+  forwardedCookies?: ForwardedCookies;
   relayDelegate?: RelayDelegate;
 }
 
@@ -79,6 +81,7 @@ export const executeApiFunc = async ({
   isPublished,
   recursionContext,
   auditLogger,
+  forwardedCookies,
   relayDelegate = null
 }: ExecuteApiProps): Promise<ApiExecutionResponse> => {
   const authContexts = Object.assign({}, parentAuthContexts, apiDef.authContext);
@@ -97,6 +100,7 @@ export const executeApiFunc = async ({
       files,
       auditLogger: auditLogger.localAuditLogger,
       recursionContext,
+      forwardedCookies,
       relayDelegate
     });
     // No need to await, just fire-and-forget the end event.
@@ -173,9 +177,19 @@ export const fetchAndExecute = async ({
   }, {} as Record<string, string>);
   const parentAuthContexts = {};
 
-  // The cookie key is formatted as the auth ID suffixed with one of the known
-  // suffixes.
+  const forwardedCookies: ForwardedCookies = {};
+
   Object.entries(cookies ?? {}).forEach(([cookieKey, tokenValue]) => {
+    if (cookieKey.startsWith(FORWARDED_COOKIE_PREFIX)) {
+      const keyToSplit = cookieKey.replace(FORWARDED_COOKIE_PREFIX, '');
+      const parts = keyToSplit.split(FORWARDED_COOKIE_DELIMITER);
+      if (parts.length !== 2) return;
+      forwardedCookies[parts[1]] = { domain: parts[0], value: tokenValue };
+      return;
+    }
+
+    // The cookie key is formatted as the auth ID suffixed with one of the known
+    // suffixes.
     Object.entries(knownSuffixes).forEach(([knownSuffix, variableKey]) => {
       if (cookieKey.endsWith(knownSuffix)) {
         const authId = cookieKey.replace(knownSuffix, '');
@@ -189,6 +203,8 @@ export const fetchAndExecute = async ({
       }
     });
   });
+  logger.error('cookies!!!!' + JSON.stringify(cookies));
+  logger.error('cookies!!!!' + JSON.stringify(forwardedCookies));
 
   const apiResponse = await executeApiFunc({
     environment,
@@ -199,6 +215,7 @@ export const fetchAndExecute = async ({
     isPublished,
     recursionContext,
     auditLogger: pLogger,
+    forwardedCookies,
     relayDelegate
   });
   if (apiResponse) {

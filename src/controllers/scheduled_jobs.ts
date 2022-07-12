@@ -3,6 +3,7 @@ import { schedule, ScheduledTask } from 'node-cron';
 import { PersistentAuditLogger } from '../utils/audit';
 import { forwardAgentDiagnostics } from '../utils/diagnostics';
 import { setAgentHeaders } from '../utils/headers';
+import logger from '../utils/logger';
 import { makeRequest, RequestMethod } from '../utils/request';
 import { buildSuperblocksCloudUrl } from '../utils/url';
 import { executeApiFunc } from './api';
@@ -53,6 +54,7 @@ export class JobScheduler {
     this._alive = true;
     this._task?.start();
   }
+
   stop(): void {
     this._alive = false;
     this._task?.stop();
@@ -89,20 +91,42 @@ export const pollScheduledJobs = async (): Promise<ApiExecutionResponse[]> => {
     headers: setAgentHeaders()
   });
 
+  logger.info(`Successfully fetched ${apiDefs.length} scheduled jobs. ${apiDefs.map((apiDef) => apiDef.api?.id)}`);
+
+  if (!apiDefs.length) {
+    return [];
+  }
+
   const source = 'Schedule';
   const pLogger = new PersistentAuditLogger(source);
   try {
-    return Promise.all(
-      apiDefs.map((apiDef) =>
-        executeApiFunc({
-          environment: ENVIRONMENT_PRODUCTION,
-          apiDef,
-          isPublished: true,
-          recursionContext: { isEvaluatingDatasource: false, executedWorkflowsPath: [] },
-          auditLogger: pLogger
-        })
-      )
+    const startTime = Date.now();
+    let success = 0;
+    let failure = 0;
+    const allJobs = await Promise.all(
+      apiDefs.map(async (apiDef) => {
+        try {
+          const result = await executeApiFunc({
+            environment: ENVIRONMENT_PRODUCTION,
+            apiDef,
+            isPublished: true,
+            recursionContext: { isEvaluatingDatasource: false, executedWorkflowsPath: [] },
+            auditLogger: pLogger
+          });
+          success++;
+          return result;
+        } catch (e) {
+          failure++;
+          logger.error(`Failed to execute scheduled job ${apiDef.api?.id}. ${e}\n${e.stack}`);
+        }
+      })
     );
+    logger.info(
+      `Processed ${apiDefs.length} scheduled jobs in ${
+        Date.now() - startTime
+      } ms. ${success} scheduled jobs succeeded. ${failure} scheduled jobs failed.`
+    );
+    return allJobs;
   } catch (e) {
     pLogger.localAuditLogger.error(`Error while executing schedule: ${e.message}`);
     forwardAgentDiagnostics(e);

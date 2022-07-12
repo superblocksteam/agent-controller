@@ -27,7 +27,8 @@ import {
   NotFoundError,
   Plugin,
   RestApiIntegrationAuthType,
-  RestApiIntegrationDatasourceConfiguration
+  RestApiIntegrationDatasourceConfiguration,
+  ForwardedCookies
 } from '@superblocksteam/shared';
 import {
   BasePlugin,
@@ -72,6 +73,7 @@ type ExecutionProps = {
   auditLogger: P.Logger;
   recursionContext: RecursionContext;
   relayDelegate: RelayDelegate;
+  forwardedCookies?: ForwardedCookies;
 };
 
 export default class ApiExecutor {
@@ -90,6 +92,7 @@ export default class ApiExecutor {
     files,
     auditLogger,
     recursionContext,
+    forwardedCookies,
     relayDelegate
   }: ExecutionProps): Promise<ApiExecutionResponse> {
     this.status = ExecuteStatus.EXECUTING;
@@ -154,7 +157,8 @@ export default class ApiExecutor {
         recursionContext: recursionContext,
         apiId: apiDef.api.id,
         relayDelegate,
-        logFields
+        logFields,
+        forwardedCookies
       });
 
       return {
@@ -192,7 +196,8 @@ export default class ApiExecutor {
     recursionContext,
     apiId,
     relayDelegate,
-    logFields
+    logFields,
+    forwardedCookies
   }: {
     triggerActionId: string;
     agentCredentials: AgentCredentials;
@@ -210,6 +215,7 @@ export default class ApiExecutor {
     apiId: string;
     relayDelegate: RelayDelegate;
     logFields: LogFields;
+    forwardedCookies?: ForwardedCookies;
   }): Promise<ExecutionContext> {
     remoteLogger.info(
       { ...logFields, resourceAction: EventAction.STARTED },
@@ -331,6 +337,9 @@ export default class ApiExecutor {
         newContext.addGlobalVariable('$fileServerUrl', SUPERBLOCKS_FILE_SERVER_URL);
         newContext.addGlobalVariable('$flagWorker', SUPERBLOCKS_WORKER_ENABLE);
 
+        newRedactedContext.addGlobalVariable('$fileServerUrl', SUPERBLOCKS_FILE_SERVER_URL);
+        newRedactedContext.addGlobalVariable('$flagWorker', SUPERBLOCKS_WORKER_ENABLE);
+
         const { plugin, pluginModule } = await validateAndGetPluginForAction({ action, plugins });
 
         auditLogger.info('Executing action ' + action.name);
@@ -345,7 +354,8 @@ export default class ApiExecutor {
           actionConfiguration: action.configuration,
           files,
           recursionContext,
-          relayDelegate
+          relayDelegate,
+          forwardedCookies
         };
 
         // execute action and wrap function in a trace for ddog observability
@@ -356,9 +366,6 @@ export default class ApiExecutor {
             if (!SUPERBLOCKS_WORKER_ENABLE || action.pluginId == 'workflow') {
               return await pluginModule.setupAndExecute(props);
             }
-
-            props.context.addGlobalVariable('$fileServerUrl', SUPERBLOCKS_FILE_SERVER_URL);
-            props.context.addGlobalVariable('$flag_worker', true);
 
             const version = action.configuration?.superblocksMetadata?.pluginVersion;
             return await Fleet.instance().execute(version ? `${action.pluginId}@${version}` : action.pluginId, props);
