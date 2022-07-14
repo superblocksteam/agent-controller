@@ -14,7 +14,7 @@ envs.addAll([
   // or during development
   {
     name: '__SUPERBLOCKS_AGENT_SERVER_URL',
-    defaultValue: 'https://app.superblockshq.com'
+    defaultValue: 'https://app.superblocks.com'
   },
   {
     name: '__SUPERBLOCKS_AGENT_TYPE',

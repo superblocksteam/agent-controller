@@ -10,7 +10,9 @@ import {
   TokenScope,
   RestApiIntegrationDatasourceConfiguration,
   FORWARDED_COOKIE_DELIMITER,
-  FORWARDED_COOKIE_PREFIX
+  FORWARDED_COOKIE_PREFIX,
+  BadRequestError,
+  InternalServerError
 } from '@superblocksteam/shared';
 import { relayDelegateFromRequest } from '@superblocksteam/shared-backend';
 import axios from 'axios';
@@ -21,6 +23,7 @@ import { get, isEmpty } from 'lodash';
 import { defaultRefreshExpiry, defaultTokenExpiry, refreshOAuthPasswordToken } from '../../api/apiAuthentication';
 import { exchangeAuthCode, refreshAuthCode } from '../../controllers/auth';
 import { deleteCachedUserAuth, fetchDatasource, fetchPerUserToken, fetchUserToken } from '../../controllers/datasource';
+import { SUPERBLOCKS_CLOUD_BASE_URL } from '../../env';
 import { forwardAgentDiagnostics } from '../../utils/diagnostics';
 import { addDiagnosticTagsToError } from '../../utils/error';
 import logger from '../../utils/logger';
@@ -304,17 +307,31 @@ router.post('/exchange-code', async (req: Request, res: Response, next: NextFunc
   }
 });
 
-router.get('/login-cookie', async (req: Request, res: Response) => {
+router.get('/login-cookie', async (req: Request, res: Response, next: NextFunction) => {
   const domain = req.query.domain;
   const name = req.query.key;
   const value = req.query.value;
 
-  //TODO expiry
-  res.cookie(`${FORWARDED_COOKIE_PREFIX}${domain}${FORWARDED_COOKIE_DELIMITER}${name}`, value, {
-    ...HTTP_SECURE_COOKIE_OPTIONS,
-    maxAge: 90 * 24 * 60 * 60 * 1000
-  });
-  res.redirect(process.env.__SUPERBLOCKS_AGENT_SERVER_URL);
+  const queryStringDisplay = `domain: ${domain}, key: ${name}, value ${isEmpty(value) ? 'is empty' : ': <redacted>'}`;
+
+  if (isEmpty(domain) || isEmpty(name) || isEmpty(value)) {
+    return next(new BadRequestError(`Please specify 'domain', 'key' and 'value' as query params.\n${queryStringDisplay}.`));
+  }
+
+  try {
+    res.cookie(`${FORWARDED_COOKIE_PREFIX}${domain}${FORWARDED_COOKIE_DELIMITER}${name}`, value, {
+      ...HTTP_SECURE_COOKIE_OPTIONS,
+      maxAge: 90 * 24 * 60 * 60 * 1000
+    });
+  } catch (err) {
+    return next(new InternalServerError(`Login cookie setting has failed.\n${queryStringDisplay}.\nError: ${err}\n${err.stack}`));
+  }
+
+  try {
+    res.redirect(SUPERBLOCKS_CLOUD_BASE_URL);
+  } catch (err) {
+    return next(new InternalServerError(`Redirecting to ${SUPERBLOCKS_CLOUD_BASE_URL} has failed.\nError: ${err}\n${err.stack}`));
+  }
 });
 
 export default router;
