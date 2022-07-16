@@ -3,9 +3,9 @@ import {
   ActionType,
   ApiDefinition,
   ApiDetails,
-  ApiTriggerType,
   ApiExecutionResponse,
   apiTriggerToEntity,
+  ApiTriggerType,
   AuthContext,
   BasicAuthConfig,
   DatasourceConfiguration,
@@ -17,18 +17,19 @@ import {
   ExecutionContext,
   ExecutionOutput,
   ExecutionParam,
+  ForwardedCookies,
+  getBasePluginId,
   getChildActionIds,
   Global,
-  GOOGLE_SHEETS_PLUGIN_ID,
   GoogleSheetsAuthType,
+  GOOGLE_SHEETS_PLUGIN_ID,
   IntegrationError,
   InternalServerError,
   LogFields,
   NotFoundError,
   Plugin,
   RestApiIntegrationAuthType,
-  RestApiIntegrationDatasourceConfiguration,
-  ForwardedCookies
+  RestApiIntegrationDatasourceConfiguration
 } from '@superblocksteam/shared';
 import {
   BasePlugin,
@@ -367,8 +368,9 @@ export default class ApiExecutor {
               return await pluginModule.setupAndExecute(props);
             }
 
+            const resolvedPluginId = getBasePluginId(action.pluginId);
             const version = action.configuration?.superblocksMetadata?.pluginVersion;
-            return await Fleet.instance().execute(version ? `${action.pluginId}@${version}` : action.pluginId, props);
+            return await Fleet.instance().execute(version ? `${resolvedPluginId}@${version}` : resolvedPluginId, props);
           }
         );
 
@@ -623,7 +625,7 @@ const validateAndGetPluginForAction = async ({
   const plugin = plugins[action.pluginId];
   let pluginModule;
   try {
-    pluginModule = await loadPluginModule(plugin.id, action.configuration.superblocksMetadata?.pluginVersion);
+    pluginModule = await loadPluginModule(getBasePluginId(plugin.id), action.configuration.superblocksMetadata?.pluginVersion);
   } catch (err) {
     throw new InternalServerError(`Failed to load plugin module ${action.pluginId}`);
   }

@@ -24,6 +24,13 @@ function getResponseMetaByError(error: Error): ResponseMeta {
       message: error.message,
       success: false
     });
+  } else if (error instanceof SyntaxError) {
+    logger.info(`Request body was not parseable: ${error}`);
+    responseMeta = new ResponseMeta({
+      status: 400,
+      message: `Request body was not JSON parseable: ${error.message}`,
+      success: false
+    });
   } else {
     logger.error(error);
     responseMeta = new ResponseMeta({

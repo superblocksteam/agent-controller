@@ -8,6 +8,7 @@ import {
   DatasourceTestResult,
   DeleteDatasourceOnAgentResult,
   ExecutionContext,
+  getBasePluginId,
   Integration,
   IntegrationError,
   isPluginTestable,
@@ -15,9 +16,12 @@ import {
   Plugin,
   RestApiDatasourceConfiguration,
   RestApiIntegrationAuthType,
-  TokenType
+  TokenType,
+  PostUserTokenRequestDto,
+  validatePostUserTokenRequest
 } from '@superblocksteam/shared';
 import { RelayDelegate } from '@superblocksteam/shared-backend';
+import { get, isEmpty } from 'lodash';
 import { evaluateDatasource } from '../api/datasourceEvaluation';
 import { APP_ENV_VAR_KEY, getAppEnvVars } from '../api/env';
 import { AgentCredentials, getOrRefreshToken } from '../utils/auth';
@@ -58,7 +62,7 @@ export const getMetadata = async (
     (datasourceConfig as RestApiDatasourceConfiguration).authConfig.authToken = token;
   }
 
-  const loadedPlugin = await loadPluginModule(plugin.id, datasourceConfig.superblocksMetadata?.pluginVersion);
+  const loadedPlugin = await loadPluginModule(getBasePluginId(plugin.id), datasourceConfig.superblocksMetadata?.pluginVersion);
   await evaluateDatasource(
     datasourceConfig,
     environment,
@@ -115,7 +119,7 @@ export const testConnection = async (
       );
       (datasourceConfig as RestApiDatasourceConfiguration).authConfig.authToken = token;
     }
-    const loadedPlugin = await loadPluginModule(plugin.id, datasourceConfig.superblocksMetadata?.pluginVersion);
+    const loadedPlugin = await loadPluginModule(getBasePluginId(plugin.id), datasourceConfig.superblocksMetadata?.pluginVersion);
     await evaluateDatasource(
       datasourceConfig,
       environment,
@@ -158,6 +162,19 @@ export const fetchDatasource = async (
   }
 };
 
+const verifyUserTokenRequestPayload = (payload: PostUserTokenRequestDto): boolean => {
+  try {
+    validatePostUserTokenRequest(payload);
+  } catch (err) {
+    const tokenUrl = get(payload.authConfig, 'tokenUrl', '');
+    logger.warn(
+      `${err}. Dropping the caching attempt. tokenUrl: ${tokenUrl}, authType: ${payload.authType}, tokenType: ${payload.tokenType}, expiresAt: ${payload.expiresAt}`
+    );
+    return false;
+  }
+  return true;
+};
+
 export const cacheAuth = async (
   agentCredentials: AgentCredentials,
   authType: AuthType,
@@ -166,17 +183,26 @@ export const cacheAuth = async (
   tokenValue: string,
   expiresAt?: Date
 ): Promise<boolean | undefined> => {
+  const userTokenPayload: PostUserTokenRequestDto = {
+    authType: authType,
+    authConfig: authConfig,
+    tokenType: tokenType,
+    tokenValue: tokenValue
+  };
+
+  if (!isEmpty(expiresAt)) {
+    userTokenPayload.expiresAt = expiresAt;
+  }
+
+  if (!verifyUserTokenRequestPayload(userTokenPayload)) {
+    return;
+  }
+
   return await makeRequest<boolean | undefined>({
     agentCredentials: agentCredentials,
     method: RequestMethod.POST,
     url: buildSuperblocksCloudUrl(`userToken`),
-    payload: {
-      authType,
-      authConfig,
-      tokenType,
-      tokenValue,
-      expiresAt
-    }
+    payload: userTokenPayload
   });
 };
 
@@ -196,17 +222,26 @@ export const cacheUserAuth = async (
   tokenValue: string,
   expiresAt?: Date
 ): Promise<boolean | undefined> => {
+  const userTokenPayload: PostUserTokenRequestDto = {
+    authType: authType,
+    authConfig: authConfig,
+    tokenType: tokenType,
+    tokenValue: tokenValue
+  };
+
+  if (!isEmpty(expiresAt)) {
+    userTokenPayload.expiresAt = expiresAt;
+  }
+
+  if (!verifyUserTokenRequestPayload(userTokenPayload)) {
+    return;
+  }
+
   return await makeRequest<boolean | undefined>({
     agentCredentials: agentCredentials,
     method: RequestMethod.POST,
     url: buildSuperblocksCloudUrl(`user/userToken`),
-    payload: {
-      authType,
-      authConfig,
-      tokenType,
-      tokenValue,
-      expiresAt
-    }
+    payload: userTokenPayload
   });
 };
 
@@ -277,7 +312,7 @@ export const preDelete = async (
     (datasourceConfig as RestApiDatasourceConfiguration).authConfig.authToken = token;
   }
 
-  const loadedPlugin = await loadPluginModule(plugin.id, datasourceConfig.superblocksMetadata?.pluginVersion);
+  const loadedPlugin = await loadPluginModule(getBasePluginId(plugin.id), datasourceConfig.superblocksMetadata?.pluginVersion);
   await evaluateDatasource(
     datasourceConfig,
     environment,

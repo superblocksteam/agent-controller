@@ -1,4 +1,4 @@
-import { Action, ApiDetails, getAction, InternalServerError, NotFoundError, SemVer } from '@superblocksteam/shared';
+import { Action, ApiDetails, getAction, getBasePluginId, InternalServerError, NotFoundError, SemVer } from '@superblocksteam/shared';
 import { BasePlugin, PluginConfiguration } from '@superblocksteam/shared-backend';
 import { fetchAndExecute } from '../controllers/api';
 import {
@@ -21,15 +21,18 @@ export const getChildActionNames = (action: Action, apiDef: ApiDetails): string[
 export async function loadPluginModule<T extends BasePlugin>(pluginId: string, pluginVersion?: SemVer): Promise<T | any> {
   try {
     logger.debug(`Loading plugin ID '${pluginId}' with version '${pluginVersion}'.`);
-    if (!agentSupportsPlugin(pluginId)) {
+    const resolvedPluginId = getBasePluginId(pluginId);
+    const resolvedPluginIdDisplay = resolvedPluginId !== pluginId ? ` (base plugin ID: '${resolvedPluginId}')` : '';
+
+    if (!agentSupportsPlugin(resolvedPluginId)) {
       // Error out if the plugin is completely unsupported; ideally, this should never
       // occur but it pays to be defensive
-      throw new InternalServerError(`Specified plugin ID '${pluginId}' is not supported`);
-    } else if (!pluginVersion || !agentSupportsPluginVersion(pluginId, pluginVersion)) {
+      throw new InternalServerError(`Specified plugin ID '${pluginId}'${resolvedPluginIdDisplay} is not supported`);
+    } else if (!pluginVersion || !agentSupportsPluginVersion(resolvedPluginId, pluginVersion)) {
       // Use the highest supported plugin version if a plugin version is not passed or supported
       const latestVersion = SUPPORTED_PLUGIN_VERSIONS_MAP[pluginId].slice(-1)[0];
       logger.warn(
-        `Specified plugin ID '${pluginId}' with version '${pluginVersion}' is not valid. Loading latest version '${latestVersion}' instead.`
+        `Specified plugin ID '${pluginId}'${resolvedPluginIdDisplay} with version '${pluginVersion}' is not valid. Loading latest version '${latestVersion}' instead.`
       );
       pluginVersion = latestVersion;
     }

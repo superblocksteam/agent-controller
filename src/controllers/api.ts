@@ -203,8 +203,8 @@ export const fetchAndExecute = async ({
       }
     });
   });
-  logger.error('cookies!!!!' + JSON.stringify(cookies));
-  logger.error('cookies!!!!' + JSON.stringify(forwardedCookies));
+
+  logger.debug('cookies: ' + JSON.stringify(Object.keys(cookies)));
 
   const apiResponse = await executeApiFunc({
     environment,
