@@ -1,13 +1,15 @@
-import { Action, ApiDetails, getAction, getBasePluginId, InternalServerError, NotFoundError, SemVer } from '@superblocksteam/shared';
-import { BasePlugin, PluginConfiguration } from '@superblocksteam/shared-backend';
+import { Action, ApiDetails, getAction, NotFoundError } from '@superblocksteam/shared';
+import { BasePlugin } from '@superblocksteam/shared-backend';
+import { VersionedPluginDefinition } from '@superblocksteam/worker';
 import { fetchAndExecute } from '../controllers/api';
+import dependencies from '../dependencies';
 import {
   SUPERBLOCKS_AGENT_EXECUTION_JS_TIMEOUT_MS,
   SUPERBLOCKS_AGENT_EXECUTION_PYTHON_TIMEOUT_MS,
   SUPERBLOCKS_AGENT_EXECUTION_REST_API_TIMEOUT_MS
 } from '../env';
 import logger from './logger';
-import { getAliasedPackageName, SUPPORTED_PLUGIN_VERSIONS_MAP, agentSupportsPlugin, agentSupportsPluginVersion } from './plugins';
+import { agentSupportsPluginVersion, SUPPORTED_PLUGIN_VERSIONS_MAP } from './plugins';
 
 export const getChildActionNames = (action: Action, apiDef: ApiDetails): string[] => {
   try {
@@ -17,41 +19,44 @@ export const getChildActionNames = (action: Action, apiDef: ApiDetails): string[
   }
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function loadPluginModule<T extends BasePlugin>(pluginId: string, pluginVersion?: SemVer): Promise<T | any> {
-  try {
-    logger.debug(`Loading plugin ID '${pluginId}' with version '${pluginVersion}'.`);
-    const resolvedPluginId = getBasePluginId(pluginId);
-    const resolvedPluginIdDisplay = resolvedPluginId !== pluginId ? ` (base plugin ID: '${resolvedPluginId}')` : '';
-
-    if (!agentSupportsPlugin(resolvedPluginId)) {
-      // Error out if the plugin is completely unsupported; ideally, this should never
-      // occur but it pays to be defensive
-      throw new InternalServerError(`Specified plugin ID '${pluginId}'${resolvedPluginIdDisplay} is not supported`);
-    } else if (!pluginVersion || !agentSupportsPluginVersion(resolvedPluginId, pluginVersion)) {
-      // Use the highest supported plugin version if a plugin version is not passed or supported
-      const latestVersion = SUPPORTED_PLUGIN_VERSIONS_MAP[pluginId].slice(-1)[0];
-      logger.warn(
-        `Specified plugin ID '${pluginId}'${resolvedPluginIdDisplay} with version '${pluginVersion}' is not valid. Loading latest version '${latestVersion}' instead.`
-      );
-      pluginVersion = latestVersion;
+export async function loadPluginModule(vpd: VersionedPluginDefinition): Promise<BasePlugin> {
+  let version: string;
+  {
+    try {
+      if (!vpd.version || !agentSupportsPluginVersion(vpd.name, vpd.version)) {
+        version = SUPPORTED_PLUGIN_VERSIONS_MAP[vpd.name].slice(-1)[0];
+        logger.warn(
+          `Specified plugin ID '${vpd.name}' with version '${vpd.version}' is not valid. Loading latest version '${version}' instead.`
+        );
+      } else {
+        version = vpd.version;
+      }
+    } catch (err) {
+      logger.error({ err }, 'could not determine plugin version');
+      throw err;
     }
-
-    const module = await import(getAliasedPackageName(pluginId, pluginVersion));
-    const plugin = new module.default();
-    plugin.attachLogger(logger.child({ plugin_name: pluginId, plugin_version: pluginVersion }));
-
-    const pluginConfiguration: PluginConfiguration = {
-      javascriptExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_JS_TIMEOUT_MS,
-      pythonExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_PYTHON_TIMEOUT_MS,
-      restApiExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_REST_API_TIMEOUT_MS,
-      workflowFetchAndExecuteFunc: fetchAndExecute
-    };
-    plugin.configure(pluginConfiguration);
-
-    return plugin;
-  } catch (err) {
-    logger.error(err);
-    throw err;
   }
+
+  const key = `sb-${vpd.name}-${version}`;
+
+  if (!(key in dependencies)) {
+    throw new Error(`plugin ${key} not found`);
+  }
+
+  const plugin: BasePlugin = dependencies[key] as BasePlugin;
+
+  // Frank: We shouldn't be doing this at runtime.
+  //        We should be doing it once when the controller starts.
+  //        This is what the worker does. However, this code is temporary
+  //        and it's the current behavior anyways.
+  plugin.attachLogger(logger.child({ plugin_name: vpd.name, plugin_version: version }));
+  plugin.configure({
+    javascriptExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_JS_TIMEOUT_MS,
+    pythonExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_PYTHON_TIMEOUT_MS,
+    restApiExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_REST_API_TIMEOUT_MS,
+    workflowFetchAndExecuteFunc: fetchAndExecute
+  });
+  await plugin.init();
+
+  return plugin;
 }

@@ -204,7 +204,9 @@ export const fetchAndExecute = async ({
     });
   });
 
-  logger.debug('cookies: ' + JSON.stringify(Object.keys(cookies)));
+  if (cookies) {
+    logger.debug('cookies: ' + JSON.stringify(Object.keys(cookies)));
+  }
 
   const apiResponse = await executeApiFunc({
     environment,

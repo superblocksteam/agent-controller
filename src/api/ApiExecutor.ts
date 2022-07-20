@@ -32,7 +32,6 @@ import {
   RestApiIntegrationDatasourceConfiguration
 } from '@superblocksteam/shared';
 import {
-  BasePlugin,
   buildContextFromBindings,
   ExecutionMeta,
   PluginProps,
@@ -40,7 +39,7 @@ import {
   RequestFiles,
   resolveConfigurationRecursive
 } from '@superblocksteam/shared-backend';
-import { Fleet } from '@superblocksteam/worker';
+import { Fleet, VersionedPluginDefinition } from '@superblocksteam/worker';
 import { cloneDeep, get, isEmpty } from 'lodash';
 import P from 'pino';
 import { SUPERBLOCKS_AGENT_ID, SUPERBLOCKS_FILE_SERVER_URL, SUPERBLOCKS_WORKER_ENABLE } from '../env';
@@ -341,8 +340,6 @@ export default class ApiExecutor {
         newRedactedContext.addGlobalVariable('$fileServerUrl', SUPERBLOCKS_FILE_SERVER_URL);
         newRedactedContext.addGlobalVariable('$flagWorker', SUPERBLOCKS_WORKER_ENABLE);
 
-        const { plugin, pluginModule } = await validateAndGetPluginForAction({ action, plugins });
-
         auditLogger.info('Executing action ' + action.name);
 
         const props: PluginProps = {
@@ -359,18 +356,27 @@ export default class ApiExecutor {
           forwardedCookies
         };
 
+        const vpd: VersionedPluginDefinition = {
+          name: getBasePluginId(action.pluginId),
+          version: action.configuration?.superblocksMetadata?.pluginVersion
+        };
+
         // execute action and wrap function in a trace for ddog observability
         const output = await tracer.trace(
-          plugin.moduleName,
+          action.pluginId,
           { tags },
           async (): Promise<ExecutionOutput> => {
             if (!SUPERBLOCKS_WORKER_ENABLE || action.pluginId == 'workflow') {
-              return await pluginModule.setupAndExecute(props);
+              return await (await loadPluginModule(vpd)).setupAndExecute(props);
             }
 
-            const resolvedPluginId = getBasePluginId(action.pluginId);
-            const version = action.configuration?.superblocksMetadata?.pluginVersion;
-            return await Fleet.instance().execute(version ? `${resolvedPluginId}@${version}` : resolvedPluginId, props);
+            return await Fleet.instance().execute(
+              {
+                vpd,
+                labels: { environment: props.environment }
+              },
+              props
+            );
           }
         );
 
@@ -610,26 +616,6 @@ const redactAndEvaluateDatasourceConfiguration = async ({
   } catch (err) {
     throw new IntegrationError(`Evaluating datasource step "${datasource.name}" failed: ${err.message}`);
   }
-};
-
-const validateAndGetPluginForAction = async ({
-  action,
-  plugins
-}: {
-  action: Action;
-  plugins: Record<string, Plugin>;
-}): Promise<{ plugin: Plugin; pluginModule: BasePlugin }> => {
-  if (!action.pluginId || !plugins[action.pluginId]) {
-    throw new NotFoundError(`Plugin is not defined in Action ${action.id}`);
-  }
-  const plugin = plugins[action.pluginId];
-  let pluginModule;
-  try {
-    pluginModule = await loadPluginModule(getBasePluginId(plugin.id), action.configuration.superblocksMetadata?.pluginVersion);
-  } catch (err) {
-    throw new InternalServerError(`Failed to load plugin module ${action.pluginId}`);
-  }
-  return { plugin, pluginModule };
 };
 
 const validateAndGetDatasourceForAction = ({

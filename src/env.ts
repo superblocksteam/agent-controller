@@ -113,10 +113,6 @@ envs.addAll([
   },
   // Worker environment variables.
   {
-    name: '__SUPERBLOCKS_WORKER_ENABLE',
-    defaultValue: false
-  },
-  {
     name: 'SUPERBLOCKS_WORKER_PORT',
     defaultValue: '5001'
   },

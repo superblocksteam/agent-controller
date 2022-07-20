@@ -21,13 +21,13 @@ import {
   validatePostUserTokenRequest
 } from '@superblocksteam/shared';
 import { RelayDelegate } from '@superblocksteam/shared-backend';
+import { Fleet } from '@superblocksteam/worker';
 import { get, isEmpty } from 'lodash';
 import { evaluateDatasource } from '../api/datasourceEvaluation';
 import { APP_ENV_VAR_KEY, getAppEnvVars } from '../api/env';
 import { AgentCredentials, getOrRefreshToken } from '../utils/auth';
 import { forwardAgentDiagnostics } from '../utils/diagnostics';
 import { addDiagnosticTagsToError } from '../utils/error';
-import { loadPluginModule } from '../utils/executor';
 import logger from '../utils/logger';
 import { makeRequest, RequestMethod } from '../utils/request';
 import { buildSuperblocksCloudUrl } from '../utils/url';
@@ -62,7 +62,6 @@ export const getMetadata = async (
     (datasourceConfig as RestApiDatasourceConfiguration).authConfig.authToken = token;
   }
 
-  const loadedPlugin = await loadPluginModule(getBasePluginId(plugin.id), datasourceConfig.superblocksMetadata?.pluginVersion);
   await evaluateDatasource(
     datasourceConfig,
     environment,
@@ -78,8 +77,17 @@ export const getMetadata = async (
   );
 
   try {
-    const metadata = await loadedPlugin.metadata(datasourceConfig, actionConfiguration);
-    return metadata;
+    return await Fleet.instance().metadata(
+      {
+        vpd: {
+          name: getBasePluginId(plugin.id),
+          version: datasourceConfig.superblocksMetadata?.pluginVersion
+        },
+        labels: { environment }
+      },
+      datasourceConfig,
+      actionConfiguration
+    );
   } catch (e) {
     const err = new IntegrationError(`Failed to load the plugin metadata. Cause: ${e}`);
     addDiagnosticTagsToError(err, { pluginId: plugin.id, datasourceId: datasourceId });
@@ -119,7 +127,6 @@ export const testConnection = async (
       );
       (datasourceConfig as RestApiDatasourceConfiguration).authConfig.authToken = token;
     }
-    const loadedPlugin = await loadPluginModule(getBasePluginId(plugin.id), datasourceConfig.superblocksMetadata?.pluginVersion);
     await evaluateDatasource(
       datasourceConfig,
       environment,
@@ -133,7 +140,18 @@ export const testConnection = async (
       },
       relayDelegate
     );
-    await loadedPlugin.test(datasourceConfig);
+
+    await Fleet.instance().test(
+      {
+        vpd: {
+          name: getBasePluginId(plugin.id),
+          version: datasourceConfig.superblocksMetadata?.pluginVersion
+        },
+        labels: { environment }
+      },
+      datasourceConfig
+    );
+
     return { success: true, message: 'Test successful' };
   } catch (e) {
     forwardAgentDiagnostics(e, { environment, pluginId: plugin.id });
@@ -312,7 +330,6 @@ export const preDelete = async (
     (datasourceConfig as RestApiDatasourceConfiguration).authConfig.authToken = token;
   }
 
-  const loadedPlugin = await loadPluginModule(getBasePluginId(plugin.id), datasourceConfig.superblocksMetadata?.pluginVersion);
   await evaluateDatasource(
     datasourceConfig,
     environment,
@@ -326,8 +343,17 @@ export const preDelete = async (
     },
     relayDelegate
   );
-  if (loadedPlugin.preDelete) {
-    await loadedPlugin.preDelete(datasourceConfig);
-  }
+
+  await Fleet.instance().preDelete(
+    {
+      vpd: {
+        name: getBasePluginId(plugin.id),
+        version: datasourceConfig.superblocksMetadata?.pluginVersion
+      },
+      labels: { environment }
+    },
+    datasourceConfig
+  );
+
   return { success: true };
 };

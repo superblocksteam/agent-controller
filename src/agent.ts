@@ -26,7 +26,6 @@ import {
 import { errorHandler } from './middleware/error';
 import healthRouter from './routes/meta/health';
 import routerV1 from './routes/v1';
-import { loadPluginModule } from './utils/executor';
 import logger from './utils/logger';
 import { prom, sendMetrics } from './utils/metrics';
 import { SUPPORTED_PLUGIN_VERSIONS_MAP } from './utils/plugins';
@@ -133,13 +132,6 @@ const server = app.listen(Number(port), '0.0.0.0', async () => {
   startSchedules();
 });
 
-(async () => {
-  // loadPluginModule currently loads the latest version of the plugin
-  // It is okay to always use the latest version of the worker pool code from js plugin
-  const javascriptPlugin = await loadPluginModule('javascript');
-  await javascriptPlugin.init();
-})();
-
 const signalHandler = async (signal: string): Promise<void> => {
   const _logger = logger.child({ who: 'signal handler', signal });
   _logger.info('received signal');
@@ -170,9 +162,6 @@ const signalHandler = async (signal: string): Promise<void> => {
   );
   const jobShutdown = scheduledJobsRunner.join();
   scheduledJobsRunner.stop();
-
-  const javascriptPlugin = await loadPluginModule('javascript');
-  await javascriptPlugin.shutdown();
 
   try {
     const logger = _logger.child({ component: 'http server' });
