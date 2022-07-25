@@ -1,4 +1,5 @@
 import { ApiDefinition, ApiExecutionResponse, ENVIRONMENT_PRODUCTION } from '@superblocksteam/shared';
+import { Fleet } from '@superblocksteam/worker';
 import { schedule, ScheduledTask } from 'node-cron';
 import { PersistentAuditLogger } from '../utils/audit';
 import { forwardAgentDiagnostics } from '../utils/diagnostics';
@@ -37,6 +38,16 @@ export class JobScheduler {
       async () => {
         try {
           this._numRunning++;
+
+          if (
+            Fleet.instance()
+              .info()
+              .filter((worker) => !worker.cordoned).length === 0
+          ) {
+            options.logger.warn('this controller does not yet have any registered workers');
+            return;
+          }
+
           const jitter = Math.floor(Math.random() * options.polling.maxJitterMs);
           await new Promise((r) => setTimeout(r, jitter));
           await pollScheduledJobs();

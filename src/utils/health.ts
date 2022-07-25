@@ -11,6 +11,12 @@ import {
 } from '../env';
 import { agentHealthManager } from '../global';
 
+export const getLiveness = (_: Request, res: Response): void => {
+  res.status(200).send({
+    message: 'ok'
+  });
+};
+
 export const getHealth = (_: Request, res: Response): void => {
   const workers: WorkerStatus[] = Fleet.instance().info();
   const numWorkers = workers.filter((worker) => !worker.cordoned).length;
@@ -36,5 +42,5 @@ export const getHealth = (_: Request, res: Response): void => {
     data.server_errors = agentHealthManager.getServerErrors();
   }
 
-  res.status(200).send(data);
+  res.status(numWorkers > 0 ? 200 : 400).send(data);
 };
