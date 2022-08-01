@@ -23,7 +23,7 @@ COPY requirements.txt /usr/app/packages/misc/requirements.txt
 RUN pip3 install -r /usr/app/packages/misc/requirements.txt
 WORKDIR /usr/app/agent/dist
 
-ENV SUPERBLOCKS_AGENT_VERSION=0.1875.0
-ENV SUPERBLOCKS_AGENT_VERSION_EXTERNAL=0.1875.0
+ENV SUPERBLOCKS_AGENT_VERSION=0.1884.0
+ENV SUPERBLOCKS_AGENT_VERSION_EXTERNAL=0.1884.0
 
 CMD ["dumb-init", "node", "agent.js"]
