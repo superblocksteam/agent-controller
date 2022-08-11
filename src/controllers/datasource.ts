@@ -1,3 +1,4 @@
+import { validatePostUserTokenRequest } from '@superblocksteam/schemas';
 import {
   ActionConfiguration,
   AuthConfig,
@@ -17,14 +18,14 @@ import {
   RestApiDatasourceConfiguration,
   RestApiIntegrationAuthType,
   TokenType,
-  PostUserTokenRequestDto,
-  validatePostUserTokenRequest
+  PostUserTokenRequestDto
 } from '@superblocksteam/shared';
 import { RelayDelegate } from '@superblocksteam/shared-backend';
 import { Fleet } from '@superblocksteam/worker';
 import { get, isEmpty } from 'lodash';
 import { evaluateDatasource } from '../api/datasourceEvaluation';
 import { APP_ENV_VAR_KEY, getAppEnvVars } from '../api/env';
+import { SUPERBLOCKS_AGENT_EAGER_REFRESH_THRESHOLD_MS } from '../env';
 import { AgentCredentials, getOrRefreshToken } from '../utils/auth';
 import { forwardAgentDiagnostics } from '../utils/diagnostics';
 import { addDiagnosticTagsToError } from '../utils/error';
@@ -281,22 +282,33 @@ export const fetchPerUserToken = async (
   });
 };
 
-export const fetchUserToken = async (
-  agentCredentials: AgentCredentials,
-  authType: AuthType,
-  authConfig: AuthConfig,
-  tokenType: TokenType,
-  datasourceId?: string
-): Promise<string | undefined> => {
+type FetchUserTokenRequest = {
+  agentCredentials: AgentCredentials;
+  authType: AuthType;
+  authConfig: AuthConfig;
+  tokenType: TokenType;
+  datasourceId?: string;
+  eagerRefreshThresholdMs?: number;
+};
+
+export const fetchUserToken = async ({
+  agentCredentials,
+  authType,
+  authConfig,
+  tokenType,
+  datasourceId,
+  eagerRefreshThresholdMs = SUPERBLOCKS_AGENT_EAGER_REFRESH_THRESHOLD_MS
+}: FetchUserTokenRequest): Promise<string | undefined> => {
   return await makeRequest<string | undefined>({
     agentCredentials: agentCredentials,
     method: RequestMethod.GET,
     url: buildSuperblocksCloudUrl(`userToken`),
     payload: {
-      authType,
-      authConfig,
-      tokenType,
-      datasourceId
+      authType: authType,
+      authConfig: authConfig,
+      tokenType: tokenType,
+      datasourceId: datasourceId,
+      eagerRefreshThresholdMs: eagerRefreshThresholdMs
     }
   });
 };
@@ -320,13 +332,13 @@ export const preDelete = async (
   const initialContext = new ExecutionContext();
   initialContext.addGlobalVariableOverride(APP_ENV_VAR_KEY, getAppEnvVars(logger));
   if ((datasourceConfig as RestApiDatasourceConfiguration).authType === RestApiIntegrationAuthType.OAUTH2_CODE) {
-    const token = await fetchUserToken(
-      agentCredentials,
-      RestApiIntegrationAuthType.OAUTH2_CODE,
-      (datasourceConfig as RestApiDatasourceConfiguration).authConfig,
-      TokenType.ACCESS,
-      datasourceId
-    );
+    const token = await fetchUserToken({
+      agentCredentials: agentCredentials,
+      authType: RestApiIntegrationAuthType.OAUTH2_CODE,
+      authConfig: (datasourceConfig as RestApiDatasourceConfiguration).authConfig,
+      tokenType: TokenType.ACCESS,
+      datasourceId: datasourceId
+    });
     (datasourceConfig as RestApiDatasourceConfiguration).authConfig.authToken = token;
   }
 

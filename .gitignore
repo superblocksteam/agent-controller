@@ -19,7 +19,7 @@ coverage/
 node_modules
 
 # Lint
-.eslintcache 
+.eslintcache
 
 # Misc
 .DS_Store

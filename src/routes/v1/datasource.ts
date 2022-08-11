@@ -1,3 +1,4 @@
+import { validateDatasourceConfigurationSchema } from '@superblocksteam/schemas';
 import {
   checkEnvironment,
   unmaskSecrets,
@@ -9,7 +10,6 @@ import {
   ResponseWrapper,
   ENVIRONMENT_STAGING,
   DeleteDatasourceOnAgentResult,
-  validateDatasourceConfigurationSchema,
   ActionConfiguration
 } from '@superblocksteam/shared';
 import { relayDelegateFromRequest } from '@superblocksteam/shared-backend';

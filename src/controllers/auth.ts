@@ -68,7 +68,13 @@ export async function refreshAuthCode(
   datasource?: DatasourceDto
 ): Promise<boolean> {
   const refreshToken = datasource?.id
-    ? await fetchUserToken(agentCredentials, authType, authConfig, TokenType.REFRESH, datasource?.id)
+    ? await fetchUserToken({
+        agentCredentials: agentCredentials,
+        authType: authType,
+        authConfig: authConfig,
+        tokenType: TokenType.REFRESH,
+        datasourceId: datasource?.id
+      })
     : await fetchPerUserToken(agentCredentials, authType, authConfig, TokenType.REFRESH);
   if (!refreshToken) {
     return false;

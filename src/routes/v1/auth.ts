@@ -141,7 +141,13 @@ router.post('/check-auth', async (req: Request, res: Response, next: NextFunctio
         return;
       case RestApiIntegrationAuthType.OAUTH2_CODE: {
         if (authConfig.tokenScope === TokenScope.DATASOURCE) {
-          const token = await fetchUserToken(agentCredentials, authType, authConfig, TokenType.ACCESS, datasourceId);
+          const token = await fetchUserToken({
+            agentCredentials: agentCredentials,
+            authType: authType,
+            authConfig: authConfig,
+            tokenType: TokenType.ACCESS,
+            datasourceId: datasourceId
+          });
           let hasToken = Boolean(token);
           if (!hasToken) {
             hasToken = await refreshAuthCode(agentCredentials, authType, authConfig, datasourceId);

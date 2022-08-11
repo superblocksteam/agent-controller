@@ -102,7 +102,12 @@ export async function getOauthPasswordToken(
   action: Action
 ): Promise<string> {
   try {
-    const refreshToken = await fetchUserToken(agentCreds, authType, authConfig, TokenType.REFRESH);
+    const refreshToken = await fetchUserToken({
+      agentCredentials: agentCreds,
+      authType: authType,
+      authConfig: authConfig,
+      tokenType: TokenType.REFRESH
+    });
     let tokens: OauthTokenResponse = undefined;
     let errMsg: string;
     if (!isEmpty(refreshToken)) {

@@ -1,15 +1,13 @@
-import path from 'path';
 import { getBasePluginId, RegisteredPlugins, SemVer } from '@superblocksteam/shared';
+import dependencies from '../dependencies';
 import { SUPERBLOCKS_GOOGLE_SHEETS_CLIENT_ID, SUPERBLOCKS_GOOGLE_SHEETS_REDIRECT_PATH } from '../env';
 
 const SUPERBLOCKS_PLUGIN_PACKAGE_PREFIX = 'sb-';
 
 const getSupportedPluginVersionsMap = (): Record<string, string[]> => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const depedencies: Record<string, string> = require(path.resolve(__dirname, '..', '..', 'package.json')).dependencies;
   const pluginVersionsMap: Record<string, string[]> = {};
   const pluginIDs = RegisteredPlugins(SUPERBLOCKS_GOOGLE_SHEETS_CLIENT_ID, SUPERBLOCKS_GOOGLE_SHEETS_REDIRECT_PATH).getIDs();
-  for (const dep in depedencies) {
+  for (const dep in dependencies) {
     if (dep.startsWith(SUPERBLOCKS_PLUGIN_PACKAGE_PREFIX)) {
       // Parse the aliased dependency name assuming the format of
       // the Superblocks package dependency is sb-${plugin.id}-${plugin.version}

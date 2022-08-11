@@ -22,7 +22,13 @@ export async function getOrRefreshToken(
   authConfig: AuthConfig,
   datasource: DatasourceDto
 ): Promise<string> {
-  let token = await fetchUserToken(agentCredentials, authType, authConfig, TokenType.ACCESS, datasource.id);
+  let token = await fetchUserToken({
+    agentCredentials: agentCredentials,
+    authType: authType,
+    authConfig: authConfig,
+    tokenType: TokenType.ACCESS,
+    datasourceId: datasource.id
+  });
   if (!token) {
     if (authConfig.refreshTokenFromServer) {
       const newUserToken = refreshUserTokenOnServer(agentCredentials, authType, authConfig, datasource);
@@ -35,7 +41,13 @@ export async function getOrRefreshToken(
         throw new Error(`Failed to refresh a token on agent`);
       }
     }
-    token = await fetchUserToken(agentCredentials, authType, authConfig, TokenType.ACCESS, datasource.id);
+    token = await fetchUserToken({
+      agentCredentials: agentCredentials,
+      authType: authType,
+      authConfig: authConfig,
+      tokenType: TokenType.ACCESS,
+      datasourceId: datasource.id
+    });
   }
   return token;
 }
