@@ -320,7 +320,8 @@ export default class ApiExecutor {
         apiId,
         applicationId,
         datasourceId: action.datasourceId,
-        pluginId: action.pluginId
+        pluginId: action.pluginId,
+        organizationId: logFields.organizationId // TODO(frank): I think it makes sense to refactor our tags so that we simply pass in 'logFields'.
       };
       try {
         const evaluatedDatasource = evaluatedDatasourceConfigs[action.datasourceId];
