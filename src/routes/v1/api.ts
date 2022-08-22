@@ -32,6 +32,7 @@ const upload = multer({
 
 // Fetch the given API definition from Superblocks Cloud and execute it
 router.post('/execute', upload.array('files'), autoReap, async (req: Request, res: Response, next: NextFunction) => {
+  const requestStart = Date.now();
   activateKeepAliveProbes(res);
   let isSuccessful = false;
   try {
@@ -63,7 +64,9 @@ router.post('/execute', upload.array('files'), autoReap, async (req: Request, re
       relayDelegate
     };
 
-    const apiResponse = await fetchAndExecute(props);
+    const fetchAndExecuteStart = Date.now();
+    const { apiResponse, apiRecord } = await fetchAndExecute(props);
+    const fetchAndExecuteEnd = Date.now();
 
     res.header(CORRELATION_ID, props.metadata.correlationId);
 
@@ -77,6 +80,20 @@ router.post('/execute', upload.array('files'), autoReap, async (req: Request, re
       response.responseMeta.status = 500;
       response.responseMeta.message = err;
     }
+
+    const requestEnd = Date.now();
+    // Create or add to the timing metadata
+    apiResponse.timing = {
+      ...(apiResponse.timing ?? {}),
+      fetchAndExecuteStart,
+      fetchAndExecuteEnd,
+      fetchAndExecuteDurationMs: fetchAndExecuteEnd - fetchAndExecuteStart,
+      requestStart,
+      requestEnd,
+      requestDurationMs: requestEnd - requestStart
+    };
+    if (apiRecord) apiRecord.finish(apiResponse);
+
     res.send(response);
   } catch (err) {
     next(err);

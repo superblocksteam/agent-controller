@@ -18,7 +18,7 @@ import {
 } from '@superblocksteam/shared';
 import { FetchAndExecuteProps, RelayDelegate, RequestFiles } from '@superblocksteam/shared-backend';
 import ApiExecutor, { RecursionContext } from '../api/ApiExecutor';
-import { PersistentAuditLogger } from '../utils/audit';
+import { ApiRequestRecord, PersistentAuditLogger } from '../utils/audit';
 import { AgentCredentials } from '../utils/auth';
 import { forwardAgentDiagnostics } from '../utils/diagnostics';
 import { addDiagnosticTagsToError } from '../utils/error';
@@ -83,29 +83,30 @@ export const executeApiFunc = async ({
   auditLogger,
   forwardedCookies,
   relayDelegate = null
-}: ExecuteApiProps): Promise<ApiExecutionResponse> => {
+}: ExecuteApiProps): Promise<{ apiResponse: ApiExecutionResponse; apiRecord: ApiRequestRecord }> => {
   const authContexts = Object.assign({}, parentAuthContexts, apiDef.authContext);
-  const event = auditLogger.makeApiLogEvent(apiDef, isPublished);
+  const apiRecord = auditLogger.makeApiLogEvent(apiDef, isPublished);
   const tags: DiagnosticMetadataTags = { apiId: apiDef?.api?.id };
   try {
     validateApiDefinition(apiDef);
-    // Wait for the start event to finish so that the execution timer is started.
-    await event.start();
     const apiExecutor = new ApiExecutor();
-    const apiResponse = await apiExecutor.execute({
-      environment,
-      apiDef,
-      executionParams,
-      authContexts,
-      files,
-      auditLogger: auditLogger.localAuditLogger,
-      recursionContext,
-      forwardedCookies,
-      relayDelegate
-    });
-    // No need to await, just fire-and-forget the end event.
-    event.finish(apiResponse);
-    return apiResponse;
+    // Let the API execution and event start audit creation run in parallel
+    const apiExecAndAuditStartPromises = await Promise.allSettled([
+      apiExecutor.execute({
+        environment,
+        apiDef,
+        executionParams,
+        authContexts,
+        files,
+        auditLogger: auditLogger.localAuditLogger,
+        recursionContext,
+        forwardedCookies,
+        relayDelegate
+      }),
+      apiRecord.start()
+    ]);
+    const apiResponse = (apiExecAndAuditStartPromises[0] as PromiseFulfilledResult<ApiExecutionResponse>).value;
+    return { apiResponse, apiRecord };
   } catch (err) {
     auditLogger.localAuditLogger.error(`API Executor error, ${err}`);
     addDiagnosticTagsToError(err, tags);
@@ -124,8 +125,9 @@ export const fetchAndExecute = async ({
   recursionContext,
   isWorkflow,
   relayDelegate
-}: FetchAndExecuteProps): Promise<ApiExecutionResponse> => {
+}: FetchAndExecuteProps): Promise<{ apiResponse: ApiExecutionResponse; apiRecord?: ApiRequestRecord }> => {
   let apiDef: ApiDefinition | undefined;
+  const fetchStart = Date.now();
   try {
     apiDef = await fetchApi({
       apiId,
@@ -153,10 +155,13 @@ export const fetchAndExecute = async ({
     const errorCtx = new ExecutionContext();
     errorCtx.error = err.message;
     return {
-      apiId,
-      context: errorCtx
+      apiResponse: {
+        apiId,
+        context: errorCtx
+      }
     };
   }
+  const fetchEnd = Date.now();
 
   // If executing workflow, update execution path to check for cycles
   if (isWorkflow) {
@@ -164,6 +169,8 @@ export const fetchAndExecute = async ({
   }
   const source = apiDef.metadata?.requester ?? 'Unknown';
   const pLogger = new PersistentAuditLogger(source);
+
+  // TODO(taha) skip if no rest api steps
 
   // find all cookies that end with superblocks suffixes and create a context
   // object out of them. this is then used for the execution context of auth'ed
@@ -208,7 +215,8 @@ export const fetchAndExecute = async ({
     logger.debug('cookies: ' + JSON.stringify(Object.keys(cookies)));
   }
 
-  const apiResponse = await executeApiFunc({
+  const executeStart = Date.now();
+  const { apiResponse, apiRecord } = await executeApiFunc({
     environment,
     apiDef,
     executionParams,
@@ -220,9 +228,19 @@ export const fetchAndExecute = async ({
     forwardedCookies,
     relayDelegate
   });
+  const executeEnd = Date.now();
   if (apiResponse) {
     apiResponse.apiName = apiDef?.api?.actions?.name;
     apiResponse.notificationConfig = apiDef?.api?.actions?.notificationConfig;
+    apiResponse.timing = {
+      ...(apiResponse.timing ?? {}),
+      fetchStart,
+      fetchEnd,
+      fetchDurationMs: fetchEnd - fetchStart,
+      executeStart,
+      executeEnd,
+      executeDurationMs: executeEnd - executeStart
+    };
   }
 
   // If executed workflow successfully, remove self from execution path as there was no cycle
@@ -234,8 +252,7 @@ export const fetchAndExecute = async ({
     }
     recursionContext.executedWorkflowsPath.splice(idx);
   }
-
-  return apiResponse;
+  return { apiResponse, apiRecord };
 };
 
 const validateApiDefinition = (apiDef: ApiDefinition) => {

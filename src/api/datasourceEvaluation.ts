@@ -77,6 +77,7 @@ async function evaluateDynamicDatasource(
     // environment.
     const apiRequest = { apiId: workflowId, params: [], viewMode: PUBLISHED_VIEW_MODE };
 
+    const fetchStart = Date.now();
     const apiDef = await fetchApi({
       apiId: apiRequest.apiId,
       isPublished: apiRequest.viewMode,
@@ -85,8 +86,12 @@ async function evaluateDynamicDatasource(
       isWorkflow,
       relayDelegate
     });
+    const fetchEnd = Date.now();
+
     const pLogger = new PersistentAuditLogger('todo');
-    const apiResponse = await executeApiFunc({
+
+    const executeStart = Date.now();
+    const { apiResponse, apiRecord } = await executeApiFunc({
       environment,
       apiDef,
       files: undefined,
@@ -98,6 +103,17 @@ async function evaluateDynamicDatasource(
       auditLogger: pLogger,
       relayDelegate
     });
+    const executeEnd = Date.now();
+    apiResponse.timing = {
+      ...(apiResponse.timing ?? {}),
+      fetchStart,
+      fetchEnd,
+      fetchDurationMs: fetchEnd - fetchStart,
+      executeStart,
+      executeEnd,
+      executeDurationMs: executeEnd - executeStart
+    };
+    apiRecord.finish(apiResponse);
 
     try {
       Object.values(apiResponse.context.outputs).forEach((output) => {

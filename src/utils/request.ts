@@ -131,7 +131,7 @@ export async function makeAuditLogRequest<R>(method: RequestMethod, url: string,
     logger.error(`Audit log request failed: ${e.message}`);
     parseAndRecordError(e);
   } finally {
-    logger.info(`Audit logging request to ${url} finished in ${Date.now() - startTime}ms`);
+    logger.debug(`Audit logging request to ${url} finished in ${Date.now() - startTime}ms`);
   }
 }
 

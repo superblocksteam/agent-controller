@@ -27,7 +27,6 @@ import {
   InternalServerError,
   LogFields,
   NotFoundError,
-  Plugin,
   RestApiIntegrationAuthType,
   RestApiIntegrationDatasourceConfiguration
 } from '@superblocksteam/shared';
@@ -149,7 +148,6 @@ export default class ApiExecutor {
         redactedContext: redactedContext,
         authContexts: authContexts,
         datasources: apiDef.datasources,
-        plugins: apiDef.plugins,
         applicationId: api.applicationId,
         auditLogger,
         files,
@@ -188,7 +186,6 @@ export default class ApiExecutor {
     redactedContext,
     authContexts,
     datasources,
-    plugins,
     applicationId,
     files,
     auditLogger,
@@ -206,7 +203,6 @@ export default class ApiExecutor {
     redactedContext: ExecutionContext;
     authContexts: AuthContext;
     datasources: Record<string, DatasourceDto>;
-    plugins: Record<string, Plugin>;
     applicationId: string;
     files: RequestFiles;
     auditLogger: P.Logger;

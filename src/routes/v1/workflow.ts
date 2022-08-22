@@ -20,6 +20,7 @@ const router = express.Router();
 
 // Fetch the specified Workflow definition from Superblocks Cloud, and execute it
 router.post('/:apiId', async (req: Request, res: Response, next: NextFunction) => {
+  const requestStart = Date.now();
   // TODO: EG-1034, remove this defaulting after we upgrade all the customers
   let isSuccessful = false;
   try {
@@ -36,6 +37,7 @@ router.post('/:apiId', async (req: Request, res: Response, next: NextFunction) =
     const apiKey = extractAuthHeaderFromRequest(req, true);
     const agentCredentials = new AgentCredentials({ apiKey: apiKey });
     const relayDelegate = relayDelegateFromRequest(req);
+    const fetchStart = Date.now();
     const apiDef = await fetchApi({
       apiId: apiRequest.apiId,
       isPublished: apiRequest.viewMode,
@@ -44,6 +46,7 @@ router.post('/:apiId', async (req: Request, res: Response, next: NextFunction) =
       isWorkflow: true,
       relayDelegate
     });
+    const fetchEnd = Date.now();
 
     const props = {
       metadata: {
@@ -62,7 +65,9 @@ router.post('/:apiId', async (req: Request, res: Response, next: NextFunction) =
       relayDelegate
     };
 
-    const apiResponse = await executeApiFunc(props);
+    const executeStart = Date.now();
+    const { apiResponse, apiRecord } = await executeApiFunc(props);
+    const executeEnd = Date.now();
 
     res.header(CORRELATION_ID, props.metadata.correlationId);
 
@@ -76,6 +81,24 @@ router.post('/:apiId', async (req: Request, res: Response, next: NextFunction) =
       response.responseMeta.status = 500;
       response.responseMeta.message = err;
     }
+
+    const requestEnd = Date.now();
+    // Create or add to the timing metadata
+    apiResponse.timing = {
+      ...(apiResponse.timing ?? {}),
+      fetchStart,
+      fetchEnd,
+      fetchDurationMs: fetchEnd - fetchStart,
+      executeStart,
+      executeEnd,
+      executeDurationMs: executeEnd - executeStart,
+      requestStart,
+      requestEnd,
+      requestDurationMs: requestEnd - requestStart
+    };
+    apiRecord.finish(apiResponse);
+
+    response.responseMeta.timing = apiResponse.timing;
     res.send(response);
   } catch (err) {
     next(err);

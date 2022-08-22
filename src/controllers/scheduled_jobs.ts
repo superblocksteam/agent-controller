@@ -117,15 +117,24 @@ export const pollScheduledJobs = async (): Promise<ApiExecutionResponse[]> => {
     const allJobs = await Promise.all(
       apiDefs.map(async (apiDef) => {
         try {
-          const result = await executeApiFunc({
+          const executeStart = Date.now();
+          const { apiResponse, apiRecord } = await executeApiFunc({
             environment: ENVIRONMENT_PRODUCTION,
             apiDef,
             isPublished: true,
             recursionContext: { isEvaluatingDatasource: false, executedWorkflowsPath: [] },
             auditLogger: pLogger
           });
+          const executeEnd = Date.now();
           success++;
-          return result;
+
+          apiResponse.timing = {
+            executeStart,
+            executeEnd,
+            executeDurationMs: executeEnd - executeStart
+          };
+          apiRecord.finish(apiResponse);
+          return apiResponse;
         } catch (e) {
           failure++;
           logger.error(`Failed to execute scheduled job ${apiDef.api?.id}. ${e}\n${e.stack}`);

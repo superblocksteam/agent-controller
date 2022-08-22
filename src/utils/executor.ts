@@ -1,4 +1,5 @@
 import { Action, ApiDetails, getAction, NotFoundError } from '@superblocksteam/shared';
+import { FetchAndExecuteProps } from '@superblocksteam/shared-backend';
 import { BasePlugin } from '@superblocksteam/shared-backend';
 import { VersionedPluginDefinition } from '@superblocksteam/worker';
 import { fetchAndExecute } from '../controllers/api';
@@ -54,7 +55,9 @@ export async function loadPluginModule(vpd: VersionedPluginDefinition): Promise<
     javascriptExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_JS_TIMEOUT_MS,
     pythonExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_PYTHON_TIMEOUT_MS,
     restApiExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_REST_API_TIMEOUT_MS,
-    workflowFetchAndExecuteFunc: fetchAndExecute
+    workflowFetchAndExecuteFunc: async (props: FetchAndExecuteProps) => {
+      return (await fetchAndExecute(props)).apiResponse;
+    }
   });
   await plugin.init();
 

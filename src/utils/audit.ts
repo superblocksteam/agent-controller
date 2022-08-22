@@ -16,12 +16,15 @@ import { makeAuditLogRequest, RequestMethod } from './request';
 import { buildSuperblocksCloudUrl } from './url';
 
 export class ApiRequestRecord {
-  startTime?: Date;
   entry: AuditLogDto;
   localLogger: P.Logger;
   nameToAction: Record<string, Action>;
 
   async start(): Promise<void> {
+    // TODO(taha) Do we need to construct the steps preemptively?
+    // This doesn't mean anything and gets populated by the audit finish event later.
+    // There are server-side events that rely on this being populated, in the absence
+    // of which we do not sent start events for analytics but maybe that is okay
     const steps = [];
     for (const action of Object.values(this.nameToAction)) {
       steps.push({
@@ -34,7 +37,6 @@ export class ApiRequestRecord {
     }
     this.entry.steps = steps;
     this.entry = await makeAuditLogRequest<AuditLogDto>(RequestMethod.POST, buildSuperblocksCloudUrl(`audit`), this.entry);
-    this.startTime = new Date();
   }
 
   async finish(res: ApiExecutionResponse): Promise<AuditLogDto> {
@@ -69,6 +71,7 @@ export class ApiRequestRecord {
       });
     }
     this.entry.steps = steps;
+    this.entry.details.timing = res.timing;
 
     if (envs.get('SUPERBLOCKS_INCLUDE_ERRORS_IN_AUDIT_LOGS') !== 'true') {
       err = '<error message redacted>';
