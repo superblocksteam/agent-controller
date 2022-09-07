@@ -48,6 +48,10 @@ router.post('/:apiId', async (req: Request, res: Response, next: NextFunction) =
     });
     const fetchEnd = Date.now();
 
+    // This is set so we can add the proper metrics label.
+    // In the future, we'll have this value in a JWT.
+    res.locals.org_id = apiDef.organizationId;
+
     const props = {
       metadata: {
         correlationId: req.header(SUPERBLOCKS_REQUEST_ID_HEADER) || uuidv4()

@@ -47,6 +47,7 @@ import { forwardAgentDiagnostics } from '../utils/diagnostics';
 import { addDiagnosticTagsToError } from '../utils/error';
 import { getChildActionNames, loadPluginModule } from '../utils/executor';
 import logger, { remoteLogger } from '../utils/logger';
+import { time, apiDuration } from '../utils/metrics';
 import tracer from '../utils/tracer';
 import { apiAuthBindings, expectsBindings, getOauthClientCredsToken, getOauthPasswordToken } from './apiAuthentication';
 import { evaluateDatasource, makeAuthBindings } from './datasourceEvaluation';
@@ -140,24 +141,35 @@ export default class ApiExecutor {
 
       const agentCredentials = new AgentCredentials({ apiKey: `Bearer ${apiDef.orgApiKey}` });
 
-      const execContext = await this.executeAction({
-        triggerActionId: actions.triggerActionId,
-        agentCredentials: agentCredentials,
-        actions,
-        context: initialContext,
-        redactedContext: redactedContext,
-        authContexts: authContexts,
-        datasources: apiDef.datasources,
-        applicationId: api.applicationId,
-        auditLogger,
-        files,
-        environment: environment,
-        recursionContext: recursionContext,
-        apiId: apiDef.api.id,
-        relayDelegate,
-        logFields,
-        forwardedCookies
-      });
+      const execContext: ExecutionContext = await time<ExecutionContext>(
+        apiDuration,
+        {
+          resource_type: logFields.resourceType,
+          org_id: logFields.organizationId
+        },
+        async (): Promise<ExecutionContext> =>
+          await this.executeAction({
+            triggerActionId: actions.triggerActionId,
+            agentCredentials: agentCredentials,
+            actions,
+            context: initialContext,
+            redactedContext: redactedContext,
+            authContexts: authContexts,
+            datasources: apiDef.datasources,
+            applicationId: api.applicationId,
+            auditLogger,
+            files,
+            environment: environment,
+            recursionContext: recursionContext,
+            apiId: apiDef.api.id,
+            relayDelegate,
+            logFields,
+            forwardedCookies
+          }),
+        ({ error }: ExecutionContext): Record<string, string> => ({
+          result: error ? 'failed' : 'succeeded'
+        })
+      );
 
       return {
         apiId: api.id,
@@ -371,6 +383,10 @@ export default class ApiExecutor {
               {
                 vpd,
                 labels: { environment: props.environment }
+              },
+              {
+                orgID: logFields.organizationId,
+                resourceType: logFields.resourceType
               },
               props
             );

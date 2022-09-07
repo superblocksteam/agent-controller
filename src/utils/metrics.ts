@@ -1,9 +1,9 @@
-import { Metrics, AgentStatus } from '@superblocksteam/shared';
+import { Metrics } from '@superblocksteam/shared';
 import { Response } from 'express';
 import promBundle from 'express-prom-bundle';
-import { Counter, Registry } from 'prom-client';
+import { Counter, Registry, Summary } from 'prom-client';
 import * as si from 'systeminformation';
-import { SUPERBLOCKS_AGENT_ID, SUPERBLOCKS_AGENT_VERSION, SUPERBLOCKS_AGENT_VERSION_EXTERNAL } from '../env';
+import { SUPERBLOCKS_AGENT_VERSION, SUPERBLOCKS_AGENT_VERSION_EXTERNAL, SUPERBLOCKS_AGENT_METRICS_DEFAULT } from '../env';
 import logger from './logger';
 import { makeRequest, RequestMethod } from './request';
 import { buildSuperblocksCloudUrl } from './url';
@@ -32,19 +32,20 @@ const durationPercentiles = Object.values(RequestDurationPercentile);
 
 // Custom Metrics Registry
 export const superblocksRegistry = new Registry();
-superblocksRegistry.setDefaultLabels({
-  // Treat version_external as the version tag for all metrics exposed
-  // directly in the agent, as that is the version OPA users are
-  // familiar with
-  superblocks_agent_version: SUPERBLOCKS_AGENT_VERSION_EXTERNAL,
-  superblocks_agent_id: SUPERBLOCKS_AGENT_ID
-});
+superblocksRegistry.setDefaultLabels({ component: 'controller' });
 
 // Instrument Metrics
 export const apiCount: ExecCounter = new Counter({
   name: 'superblocks_agent_api_executions_total',
   help: 'Count of Superblocks API/Workflow executions triggered from Superblocks UI.',
   labelNames: ['status'] as const,
+  registers: [superblocksRegistry]
+});
+
+export const apiDuration: Summary = new Summary({
+  name: 'superblocks_controller_api_duration_milliseconds',
+  help: 'Duration of a Superblocks API, Workflow, or Scheduled Job.',
+  labelNames: ['org_id', 'resource_type', 'result'] as const,
   registers: [superblocksRegistry]
 });
 
@@ -84,18 +85,20 @@ export const prom = promBundle({
   includeStatusCode: false,
   metricsPath: '/metrics',
   promClient: {
-    collectDefaultMetrics: {
-      register: superblocksRegistry,
-      prefix: 'superblocks_agent_'
-    }
+    collectDefaultMetrics: SUPERBLOCKS_AGENT_METRICS_DEFAULT
+      ? {
+          register: superblocksRegistry,
+          prefix: 'superblocks_agent_'
+        }
+      : {}
   },
   promRegistry: superblocksRegistry
 });
 
 const deployedAt = new Date();
 
-export const sendMetrics = async (desiredState: AgentStatus): Promise<void> => {
-  const _logger = logger.child({ who: 'heartbeat', desiredState });
+export const sendMetrics = async (): Promise<void> => {
+  const _logger = logger.child({ who: 'heartbeat' });
 
   const reportedAt = new Date();
   try {
@@ -114,11 +117,9 @@ export const sendMetrics = async (desiredState: AgentStatus): Promise<void> => {
       workflowSuccessCount: getCount(workflowCount, ApiStatus.SUCCESS),
       workflowFailureCount: getCount(workflowCount, ApiStatus.FAILURE),
       apiP90DurationSeconds: getPercentileDuration(RequestPath.EXECUTE_API, RequestDurationPercentile.p90),
-      workflowP90DurationSeconds: getPercentileDuration(RequestPath.EXECUTE_WORKFLOW, RequestDurationPercentile.p90),
-      desiredState
+      workflowP90DurationSeconds: getPercentileDuration(RequestPath.EXECUTE_WORKFLOW, RequestDurationPercentile.p90)
     };
 
-    // Reset the Prometheus metrics
     resetMetrics();
 
     _logger.trace(`Sending the following health metrics to Superblocks Cloud: ${JSON.stringify(metrics)}`);
@@ -132,3 +133,17 @@ export const sendMetrics = async (desiredState: AgentStatus): Promise<void> => {
     _logger.error(`Failed to send health metrics to Superblocks Cloud at ${reportedAt}. ${e.stack}`);
   }
 };
+
+export async function time<T>(
+  summary: Summary,
+  labels: Record<string, string>,
+  fn: () => Promise<T>,
+  add: (result: T) => Record<string, string> = (_: T): Record<string, string> => {
+    return {};
+  }
+): Promise<T> {
+  const start: number = Date.now();
+  const result: T = await fn();
+  summary.observe({ ...labels, ...add(result) }, Date.now() - start);
+  return result;
+}

@@ -1,6 +1,7 @@
-import { AuthConfig, AuthType, DatasourceDto, TokenType } from '@superblocksteam/shared';
+import { AuthConfig, AuthType, DatasourceDto, TokenScope, TokenType } from '@superblocksteam/shared';
 import { refreshUserTokenOnAgent, refreshUserTokenOnServer } from '../controllers/auth';
-import { fetchUserToken } from '../controllers/datasource';
+import { fetchPerUserToken, fetchUserToken } from '../controllers/datasource';
+import { SUPERBLOCKS_AGENT_EAGER_REFRESH_THRESHOLD_MS } from '../env';
 
 export class AgentCredentials {
   jwt?: string;
@@ -20,15 +21,22 @@ export async function getOrRefreshToken(
   agentCredentials: AgentCredentials,
   authType: AuthType,
   authConfig: AuthConfig,
-  datasource: DatasourceDto
+  datasource: DatasourceDto,
+  eagerRefreshThresholdMs = SUPERBLOCKS_AGENT_EAGER_REFRESH_THRESHOLD_MS
 ): Promise<string> {
-  let token = await fetchUserToken({
-    agentCredentials: agentCredentials,
-    authType: authType,
-    authConfig: authConfig,
-    tokenType: TokenType.ACCESS,
-    datasourceId: datasource.id
-  });
+  let token;
+  if (authConfig.tokenScope === TokenScope.DATASOURCE) {
+    token = await fetchUserToken({
+      agentCredentials: agentCredentials,
+      authType: authType,
+      authConfig: authConfig,
+      tokenType: TokenType.ACCESS,
+      datasourceId: datasource.id,
+      eagerRefreshThresholdMs
+    });
+  } else {
+    token = await fetchPerUserToken(agentCredentials, authType, authConfig, TokenType.ACCESS, eagerRefreshThresholdMs);
+  }
   if (!token) {
     if (authConfig.refreshTokenFromServer) {
       const newUserToken = refreshUserTokenOnServer(agentCredentials, authType, authConfig, datasource);

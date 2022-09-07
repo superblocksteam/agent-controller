@@ -125,7 +125,7 @@ export const fetchAndExecute = async ({
   recursionContext,
   isWorkflow,
   relayDelegate
-}: FetchAndExecuteProps): Promise<{ apiResponse: ApiExecutionResponse; apiRecord?: ApiRequestRecord }> => {
+}: FetchAndExecuteProps): Promise<{ apiResponse: ApiExecutionResponse; apiRecord?: ApiRequestRecord; orgID?: string }> => {
   let apiDef: ApiDefinition | undefined;
   const fetchStart = Date.now();
   try {
@@ -252,7 +252,7 @@ export const fetchAndExecute = async ({
     }
     recursionContext.executedWorkflowsPath.splice(idx);
   }
-  return { apiResponse, apiRecord };
+  return { apiResponse, apiRecord, orgID: apiDef.organizationId };
 };
 
 const validateApiDefinition = (apiDef: ApiDefinition) => {

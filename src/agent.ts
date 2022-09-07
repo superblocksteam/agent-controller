@@ -1,5 +1,5 @@
 import { readFileSync } from 'fs';
-import { AgentStatus } from '@superblocksteam/shared';
+import { RetryableError, Retry } from '@superblocksteam/shared';
 import { Fleet, Options } from '@superblocksteam/worker';
 import compression from 'compression';
 import datadog from 'connect-datadog';
@@ -21,16 +21,20 @@ import {
   SUPERBLOCKS_WORKER_TLS_CA_FILE,
   SUPERBLOCKS_WORKER_TLS_CERT_FILE,
   SUPERBLOCKS_WORKER_TLS_INSECURE,
-  SUPERBLOCKS_WORKER_TLS_KEY_FILE
+  SUPERBLOCKS_WORKER_TLS_KEY_FILE,
+  SUPERBLOCKS_AGENT_METRICS_FORWARD
 } from './env';
 import { errorHandler } from './middleware/error';
+import { metrics as metricsMiddleware } from './middleware/metrics';
 import healthRouter from './routes/meta/health';
 import routerV1 from './routes/v1';
 import logger from './utils/logger';
-import { prom, sendMetrics } from './utils/metrics';
+import { prom, superblocksRegistry, sendMetrics } from './utils/metrics';
 import { SUPPORTED_PLUGIN_VERSIONS_MAP } from './utils/plugins';
 import { registerWithSuperblocksCloud } from './utils/registration';
-import { heartbeatSender, scheduledJobsRunner, startSchedules } from './utils/schedule';
+import { makeRequest, RequestMethod } from './utils/request';
+import { metrics, ping, scheduledJobsRunner, startSchedules } from './utils/schedule';
+import { buildSuperblocksCloudUrl } from './utils/url';
 import './utils/tracer';
 
 dotenv.config();
@@ -48,7 +52,8 @@ if (SUPERBLOCKS_WORKER_ENABLE) {
       jitter: SUPERBLOCKS_AGENT_STEP_RETRY_JITTER,
       limit: SUPERBLOCKS_AGENT_STEP_RETRY_LIMIT
     },
-    lazyMatching: !SUPERBLOCKS_WORKER_STRICT_MATCHING
+    lazyMatching: !SUPERBLOCKS_WORKER_STRICT_MATCHING,
+    promRegistry: superblocksRegistry
   };
 
   if (!SUPERBLOCKS_WORKER_TLS_INSECURE) {
@@ -74,6 +79,8 @@ if (SUPERBLOCKS_WORKER_ENABLE) {
 
 const app = express();
 app.use(helmet());
+
+app.use(metricsMiddleware(superblocksRegistry));
 
 // Allow cross-origin requests to the agent with the Authorization header
 // Ref: https://expressjs.com/en/resources/middleware/cors.html#configuration-options
@@ -142,17 +149,15 @@ const signalHandler = async (signal: string): Promise<void> => {
   //              everthing is stopped but there's a fatal error that causes
   //              that line to never be run in some cases.
   //
-  // Stop sending active heartbeats to the server.
-  heartbeatSender.stop();
-  await sendMetrics(AgentStatus.DISCONNECTED);
+  // stop sending heartbeats to the server
+  ping.stop();
 
-  _logger.info(
-    {
-      component: 'http server'
-    },
-    'initiating termination'
-  );
-  const serverShutdown = new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  if (SUPERBLOCKS_AGENT_METRICS_FORWARD) {
+    // stop sending metrics to the server
+    metrics.stop();
+    // send final batch of metrics to the server
+    await sendMetrics();
+  }
 
   _logger.info(
     {
@@ -162,6 +167,39 @@ const signalHandler = async (signal: string): Promise<void> => {
   );
   const jobShutdown = scheduledJobsRunner.join();
   scheduledJobsRunner.stop();
+
+  // deregister this agent
+  try {
+    await new Retry<void>({
+      backoff: {
+        duration: 1000,
+        factor: 2,
+        jitter: 0.5,
+        limit: 5
+      },
+      logger: logger.child({ who: 'deregister' }),
+      func: async (): Promise<void> => {
+        try {
+          await makeRequest<Response>({
+            method: RequestMethod.DELETE,
+            url: buildSuperblocksCloudUrl()
+          });
+        } catch (err) {
+          throw new RetryableError(err.message);
+        }
+      }
+    }).do();
+  } catch (err) {
+    logger.error({ err }, 'could not deregister controller');
+  }
+
+  _logger.info(
+    {
+      component: 'http server'
+    },
+    'initiating termination'
+  );
+  const serverShutdown = new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
 
   try {
     const logger = _logger.child({ component: 'http server' });

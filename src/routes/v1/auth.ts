@@ -7,7 +7,6 @@ import {
   ResponseWrapper,
   RestApiIntegrationAuthType,
   TokenType,
-  TokenScope,
   RestApiIntegrationDatasourceConfiguration,
   FORWARDED_COOKIE_DELIMITER,
   FORWARDED_COOKIE_PREFIX,
@@ -21,9 +20,10 @@ import JSON5 from 'json5';
 import jwt_decode from 'jwt-decode';
 import { get, isEmpty } from 'lodash';
 import { defaultRefreshExpiry, defaultTokenExpiry, refreshOAuthPasswordToken } from '../../api/apiAuthentication';
-import { exchangeAuthCode, refreshAuthCode } from '../../controllers/auth';
-import { deleteCachedUserAuth, fetchDatasource, fetchPerUserToken, fetchUserToken } from '../../controllers/datasource';
-import { SUPERBLOCKS_CLOUD_BASE_URL } from '../../env';
+import { exchangeAuthCode } from '../../controllers/auth';
+import { deleteCachedUserAuth, fetchDatasource } from '../../controllers/datasource';
+import { SUPERBLOCKS_AGENT_EAGER_REFRESH_THRESHOLD_MS, SUPERBLOCKS_CLOUD_BASE_URL } from '../../env';
+import { getOrRefreshToken } from '../../utils/auth';
 import { forwardAgentDiagnostics } from '../../utils/diagnostics';
 import { addDiagnosticTagsToError } from '../../utils/error';
 import logger from '../../utils/logger';
@@ -140,33 +140,26 @@ router.post('/check-auth', async (req: Request, res: Response, next: NextFunctio
         );
         return;
       case RestApiIntegrationAuthType.OAUTH2_CODE: {
-        if (authConfig.tokenScope === TokenScope.DATASOURCE) {
-          const token = await fetchUserToken({
-            agentCredentials: agentCredentials,
-            authType: authType,
-            authConfig: authConfig,
-            tokenType: TokenType.ACCESS,
-            datasourceId: datasourceId
-          });
-          let hasToken = Boolean(token);
-          if (!hasToken) {
-            hasToken = await refreshAuthCode(agentCredentials, authType, authConfig, datasourceId);
-          }
-          res.send(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            new ResponseWrapper<any>({ data: { authenticated: hasToken } })
+        if (!hasToken) {
+          const token = await getOrRefreshToken(
+            agentCredentials,
+            authType,
+            authConfig,
+            integration.datasource,
+            SUPERBLOCKS_AGENT_EAGER_REFRESH_THRESHOLD_MS
           );
-        } else {
-          const token = await fetchPerUserToken(agentCredentials, authType, authConfig, TokenType.ACCESS);
-          let hasToken = Boolean(token);
-          if (!hasToken) {
-            hasToken = await refreshAuthCode(agentCredentials, authType, authConfig);
+          const hasToken = Boolean(token);
+          if (hasToken) {
+            res.cookie(authKey + '-token', token, {
+              ...HTTP_SECURE_COOKIE_OPTIONS,
+              maxAge: SUPERBLOCKS_AGENT_EAGER_REFRESH_THRESHOLD_MS
+            });
           }
-          res.send(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            new ResponseWrapper<any>({ data: { authenticated: hasToken } })
-          );
         }
+        res.send(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          new ResponseWrapper<any>({ data: { authenticated: hasToken } })
+        );
         return;
       }
       default:

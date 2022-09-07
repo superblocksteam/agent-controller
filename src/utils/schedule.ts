@@ -1,18 +1,24 @@
-import { AgentStatus } from '@superblocksteam/shared';
 import { schedule } from 'node-cron';
 import { JobScheduler } from '../controllers/scheduled_jobs';
-import envs from '../env';
+import envs, { SUPERBLOCKS_AGENT_METRICS_FORWARD } from '../env';
 import logger from './logger';
 import { sendMetrics } from './metrics';
+import { makeRequest, RequestMethod } from './request';
+import { buildSuperblocksCloudUrl } from './url';
 
-// Send agent metrics to Superblocks Cloud every minute
-export const heartbeatSender = schedule(
+// send heartbeats to the server every minute
+export const ping = schedule(
   '* * * * *',
-  () => {
-    sendMetrics(AgentStatus.ACTIVE);
-  },
+  () =>
+    makeRequest<Response>({
+      method: RequestMethod.GET,
+      url: buildSuperblocksCloudUrl('ping')
+    }),
   { scheduled: false }
 );
+
+// send metrics to the server every minute
+export const metrics = schedule('* * * * *', () => sendMetrics(), { scheduled: false });
 
 export const scheduledJobsRunner = new JobScheduler({
   polling: {
@@ -25,6 +31,10 @@ export const scheduledJobsRunner = new JobScheduler({
 });
 
 export const startSchedules = (): void => {
-  heartbeatSender.start();
+  ping.start();
   scheduledJobsRunner.start();
+
+  if (SUPERBLOCKS_AGENT_METRICS_FORWARD) {
+    metrics.start();
+  }
 };

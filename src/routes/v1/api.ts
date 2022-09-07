@@ -65,8 +65,12 @@ router.post('/execute', upload.array('files'), autoReap, async (req: Request, re
     };
 
     const fetchAndExecuteStart = Date.now();
-    const { apiResponse, apiRecord } = await fetchAndExecute(props);
+    const { apiResponse, apiRecord, orgID } = await fetchAndExecute(props);
     const fetchAndExecuteEnd = Date.now();
+
+    // This is set so we can add the proper metrics label.
+    // In the future, we'll have this value in a JWT.
+    res.locals.org_id = orgID;
 
     res.header(CORRELATION_ID, props.metadata.correlationId);
 

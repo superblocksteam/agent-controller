@@ -22,7 +22,7 @@ import {
 } from '@superblocksteam/shared';
 import { RelayDelegate } from '@superblocksteam/shared-backend';
 import { Fleet } from '@superblocksteam/worker';
-import { get, isEmpty } from 'lodash';
+import { get, isDate } from 'lodash';
 import { evaluateDatasource } from '../api/datasourceEvaluation';
 import { APP_ENV_VAR_KEY, getAppEnvVars } from '../api/env';
 import { SUPERBLOCKS_AGENT_EAGER_REFRESH_THRESHOLD_MS } from '../env';
@@ -86,6 +86,7 @@ export const getMetadata = async (
         },
         labels: { environment }
       },
+      {},
       datasourceConfig,
       actionConfiguration
     );
@@ -150,6 +151,7 @@ export const testConnection = async (
         },
         labels: { environment }
       },
+      {},
       datasourceConfig
     );
 
@@ -209,7 +211,7 @@ export const cacheAuth = async (
     tokenValue: tokenValue
   };
 
-  if (!isEmpty(expiresAt)) {
+  if (isDate(expiresAt)) {
     userTokenPayload.expiresAt = expiresAt;
   }
 
@@ -248,12 +250,8 @@ export const cacheUserAuth = async (
     tokenValue: tokenValue
   };
 
-  if (!isEmpty(expiresAt)) {
+  if (isDate(expiresAt)) {
     userTokenPayload.expiresAt = expiresAt;
-  }
-
-  if (!verifyUserTokenRequestPayload(userTokenPayload)) {
-    return;
   }
 
   return await makeRequest<boolean | undefined>({
@@ -268,7 +266,8 @@ export const fetchPerUserToken = async (
   agentCredentials: AgentCredentials,
   authType: AuthType,
   authConfig: AuthConfig,
-  tokenType: TokenType
+  tokenType: TokenType,
+  eagerRefreshThresholdMs = SUPERBLOCKS_AGENT_EAGER_REFRESH_THRESHOLD_MS
 ): Promise<string | undefined> => {
   return await makeRequest<string | undefined>({
     agentCredentials: agentCredentials,
@@ -277,7 +276,8 @@ export const fetchPerUserToken = async (
     payload: {
       authType,
       authConfig,
-      tokenType
+      tokenType,
+      eagerRefreshThresholdMs: eagerRefreshThresholdMs
     }
   });
 };
@@ -364,6 +364,7 @@ export const preDelete = async (
       },
       labels: { environment }
     },
+    {},
     datasourceConfig
   );
 
