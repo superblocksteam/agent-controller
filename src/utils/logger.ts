@@ -1,19 +1,37 @@
-import { AuditLogMetadata, EnvStore } from '@superblocksteam/shared';
-import { RemoteLogger } from '@superblocksteam/shared-backend';
-import formats from 'dd-trace/ext/formats';
+import { context } from '@opentelemetry/api';
+import { AuditLogMetadata, EnvStore, buildSuperblocksDomainURL } from '@superblocksteam/shared';
+import { RemoteLogger, otelSpanContextToDataDog } from '@superblocksteam/shared-backend';
 import dotenv from 'dotenv';
 import { default as P, default as pino } from 'pino';
 import pinoCaller from 'pino-caller';
 import { createWriteStream } from 'pino-http-send';
-import { SUPERBLOCKS_REMOTE_LOGGER_ENABLED } from '../env';
+import { SUPERBLOCKS_AGENT_DOMAIN } from '../env';
 import { setAgentHeaders } from './headers';
-import tracer from './tracer';
-import { buildSuperblocksCloudUrl } from './url';
 dotenv.config();
 
 const loggerEnvs = new EnvStore(process.env);
 
 loggerEnvs.addAll([
+  {
+    name: '__SUPERBLOCKS_AGENT_INTAKE_LOGS_ENABLE',
+    defaultValue: 'true'
+  },
+  {
+    name: '__SUPERBLOCKS_AGENT_INTAKE_LOGS_SCHEME',
+    defaultValue: 'https'
+  },
+  {
+    name: '__SUPERBLOCKS_AGENT_INTAKE_LOGS_HOST',
+    defaultValue: ''
+  },
+  {
+    name: '__SUPERBLOCKS_AGENT_INTAKE_LOGS_PORT',
+    defaultValue: '443'
+  },
+  {
+    name: '__SUPERBLOCKS_AGENT_INTAKE_LOGS_PATH',
+    defaultValue: ''
+  },
   {
     name: 'SUPERBLOCKS_AGENT_LOG_LEVEL',
     defaultValue: 'info'
@@ -23,12 +41,8 @@ loggerEnvs.addAll([
     defaultValue: 'true'
   },
   {
-    name: 'SUPERBLOCKS_AGENT_LOG_HTTP_DISABLE',
-    defaultValue: 'false'
-  },
-  {
     name: '__SUPERBLOCKS_AGENT_LOG_BATCH_SIZE',
-    defaultValue: '10'
+    defaultValue: '100'
   },
   {
     name: '__SUPERBLOCKS_AGENT_LOG_RETRIES',
@@ -56,14 +70,8 @@ const pinoConfig: P.LoggerOptions = {
     }
   },
   mixin() {
-    const span = tracer.scope().active();
-    const time = new Date().toISOString();
-    if (!span) {
-      return {};
-    }
-    const record = { time };
-    tracer.inject(span.context(), formats.LOG, record);
-    return record;
+    // https://docs.datadoghq.com/tracing/other_telemetry/connect_logs_and_traces/opentelemetry/?tab=nodejs
+    return otelSpanContextToDataDog(context.active());
   },
   prettyPrint: loggerEnvs.get('SUPERBLOCKS_AGENT_LOG_DISABLE_PRETTY') === 'true' ? null : { colorize: true }
 };
@@ -76,9 +84,16 @@ export const createLocalAuditLogger = (auditLogMetadata: AuditLogMetadata): P.Lo
 
 let stream;
 
-if (loggerEnvs.get('SUPERBLOCKS_AGENT_LOG_HTTP_DISABLE') === 'false') {
+if (loggerEnvs.get('__SUPERBLOCKS_AGENT_INTAKE_LOGS_ENABLE') === 'true') {
   const httpStreamConfig = {
-    url: buildSuperblocksCloudUrl('logs'),
+    url: buildSuperblocksDomainURL({
+      domain: SUPERBLOCKS_AGENT_DOMAIN,
+      subdomain: 'logs.intake',
+      scheme: loggerEnvs.get('__SUPERBLOCKS_AGENT_INTAKE_LOGS_SCHEME'),
+      port: loggerEnvs.get('__SUPERBLOCKS_AGENT_INTAKE_LOGS_PORT'),
+      path: loggerEnvs.get('__SUPERBLOCKS_AGENT_INTAKE_LOGS_PATH'),
+      hostOverride: loggerEnvs.get('__SUPERBLOCKS_AGENT_INTAKE_LOGS_HOST')
+    }),
     headers: setAgentHeaders(),
     batchSize: parseInt(loggerEnvs.get('__SUPERBLOCKS_AGENT_LOG_BATCH_SIZE')),
     retries: parseInt(loggerEnvs.get('__SUPERBLOCKS_AGENT_LOG_RETRIES')),
@@ -88,6 +103,9 @@ if (loggerEnvs.get('SUPERBLOCKS_AGENT_LOG_HTTP_DISABLE') === 'false') {
   stream = createWriteStream(httpStreamConfig);
 }
 
-export const remoteLogger = new RemoteLogger({ enabled: SUPERBLOCKS_REMOTE_LOGGER_ENABLED, stream: stream });
+export const remoteLogger = new RemoteLogger({
+  enabled: loggerEnvs.get('__SUPERBLOCKS_AGENT_INTAKE_LOGS_ENABLE') === 'true',
+  stream: stream
+});
 
 export default logger;

@@ -19,6 +19,7 @@ export class ApiRequestRecord {
   entry: AuditLogDto;
   localLogger: P.Logger;
   nameToAction: Record<string, Action>;
+  startPromise: Promise<AuditLogDto>;
 
   async start(): Promise<void> {
     // TODO(taha) Do we need to construct the steps preemptively?
@@ -36,11 +37,12 @@ export class ApiRequestRecord {
       });
     }
     this.entry.steps = steps;
-    this.entry = await makeAuditLogRequest<AuditLogDto>(RequestMethod.POST, buildSuperblocksCloudUrl(`audit`), this.entry);
+    this.startPromise = makeAuditLogRequest<AuditLogDto>(RequestMethod.POST, buildSuperblocksCloudUrl(`audit`), this.entry);
   }
 
   async finish(res: ApiExecutionResponse): Promise<AuditLogDto> {
     try {
+      this.entry = await this.startPromise;
       return await this.constructAndSendFinishRequest(res);
     } catch (e) {
       logger.error(`Failed to send completion audit log: ${e.message}`);

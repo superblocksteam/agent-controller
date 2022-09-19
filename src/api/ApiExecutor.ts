@@ -1,3 +1,4 @@
+import { SpanKind, SpanStatusCode, Span } from '@opentelemetry/api';
 import {
   Action,
   ActionType,
@@ -28,7 +29,18 @@ import {
   LogFields,
   NotFoundError,
   RestApiIntegrationAuthType,
-  RestApiIntegrationDatasourceConfiguration
+  RestApiIntegrationDatasourceConfiguration,
+  OBS_TAG_ORG_ID,
+  OBS_TAG_RESOURCE_TYPE,
+  OBS_TAG_RESOURCE_ID,
+  OBS_TAG_RESOURCE_NAME,
+  OBS_TAG_USER_EMAIL,
+  OBS_TAG_CONTROLLER_ID,
+  OBS_TAG_ENV,
+  OBS_TAG_CORRELATION_ID,
+  OBS_TAG_PARENT_TYPE,
+  OBS_TAG_PARENT_ID,
+  OBS_TAG_PARENT_NAME
 } from '@superblocksteam/shared';
 import {
   buildContextFromBindings,
@@ -36,7 +48,8 @@ import {
   PluginProps,
   RelayDelegate,
   RequestFiles,
-  resolveConfigurationRecursive
+  resolveConfigurationRecursive,
+  observe
 } from '@superblocksteam/shared-backend';
 import { Fleet, VersionedPluginDefinition } from '@superblocksteam/worker';
 import { cloneDeep, get, isEmpty } from 'lodash';
@@ -47,8 +60,8 @@ import { forwardAgentDiagnostics } from '../utils/diagnostics';
 import { addDiagnosticTagsToError } from '../utils/error';
 import { getChildActionNames, loadPluginModule } from '../utils/executor';
 import logger, { remoteLogger } from '../utils/logger';
-import { time, apiDuration } from '../utils/metrics';
-import tracer from '../utils/tracer';
+import { apiDuration } from '../utils/metrics';
+import { getTracer } from '../utils/tracer';
 import { apiAuthBindings, expectsBindings, getOauthClientCredsToken, getOauthPasswordToken } from './apiAuthentication';
 import { evaluateDatasource, makeAuthBindings } from './datasourceEvaluation';
 import { APP_ENV_VAR_KEY, getAppEnvVars, getRedactedAppEnvVars } from './env';
@@ -141,34 +154,70 @@ export default class ApiExecutor {
 
       const agentCredentials = new AgentCredentials({ apiKey: `Bearer ${apiDef.orgApiKey}` });
 
-      const execContext: ExecutionContext = await time<ExecutionContext>(
-        apiDuration,
+      const traceTags = {
+        [OBS_TAG_RESOURCE_TYPE]: logFields.resourceType,
+        [OBS_TAG_RESOURCE_ID]: logFields.resourceId,
+        [OBS_TAG_RESOURCE_NAME]: logFields.resourceName,
+        [OBS_TAG_USER_EMAIL]: logFields.userEmail,
+        [OBS_TAG_ORG_ID]: logFields.organizationId,
+        [OBS_TAG_CONTROLLER_ID]: SUPERBLOCKS_AGENT_ID,
+        [OBS_TAG_ENV]: environment,
+        [OBS_TAG_CORRELATION_ID]: metadata?.correlationId
+      };
+
+      const execContext: ExecutionContext = await getTracer().startActiveSpan(
+        logFields.resourceType,
         {
-          resource_type: logFields.resourceType,
-          org_id: logFields.organizationId
+          attributes: traceTags,
+          kind: SpanKind.SERVER
         },
-        async (): Promise<ExecutionContext> =>
-          await this.executeAction({
-            triggerActionId: actions.triggerActionId,
-            agentCredentials: agentCredentials,
-            actions,
-            context: initialContext,
-            redactedContext: redactedContext,
-            authContexts: authContexts,
-            datasources: apiDef.datasources,
-            applicationId: api.applicationId,
-            auditLogger,
-            files,
-            environment: environment,
-            recursionContext: recursionContext,
-            apiId: apiDef.api.id,
-            relayDelegate,
-            logFields,
-            forwardedCookies
-          }),
-        ({ error }: ExecutionContext): Record<string, string> => ({
-          result: error ? 'failed' : 'succeeded'
-        })
+        async (span: Span): Promise<ExecutionContext> => {
+          try {
+            return await observe<ExecutionContext>(
+              apiDuration,
+              {
+                [OBS_TAG_ORG_ID]: logFields.organizationId,
+                [OBS_TAG_RESOURCE_TYPE]: logFields.resourceType,
+
+                // TODO(frank): deprecate after dashboards are updated with the above
+                org_id: logFields.organizationId
+              },
+              async (): Promise<ExecutionContext> =>
+                await this.executeAction({
+                  triggerActionId: actions.triggerActionId,
+                  agentCredentials: agentCredentials,
+                  actions,
+                  context: initialContext,
+                  redactedContext: redactedContext,
+                  authContexts: authContexts,
+                  datasources: apiDef.datasources,
+                  applicationId: api.applicationId,
+                  auditLogger,
+                  files,
+                  environment: environment,
+                  recursionContext: recursionContext,
+                  apiId: apiDef.api.id,
+                  relayDelegate,
+                  logFields,
+                  forwardedCookies
+                }),
+              ({ error }: ExecutionContext): Record<string, string> => {
+                if (error) {
+                  span.setStatus({ code: SpanStatusCode.ERROR });
+                  return {
+                    result: 'failed'
+                  };
+                }
+                span.setStatus({ code: SpanStatusCode.OK });
+                return {
+                  result: 'succeeded'
+                };
+              }
+            );
+          } finally {
+            span.end();
+          }
+        }
       );
 
       return {
@@ -370,28 +419,35 @@ export default class ApiExecutor {
           version: action.configuration?.superblocksMetadata?.pluginVersion
         };
 
-        // execute action and wrap function in a trace for ddog observability
-        const output = await tracer.trace(
-          action.pluginId,
-          { tags },
-          async (): Promise<ExecutionOutput> => {
-            if (!SUPERBLOCKS_WORKER_ENABLE || action.pluginId == 'workflow') {
-              return await (await loadPluginModule(vpd)).setupAndExecute(props);
-            }
-
-            return await Fleet.instance().execute(
-              {
-                vpd,
-                labels: { environment: props.environment }
-              },
-              {
-                orgID: logFields.organizationId,
-                resourceType: logFields.resourceType
-              },
-              props
-            );
-          }
-        );
+        const output: ExecutionOutput =
+          !SUPERBLOCKS_WORKER_ENABLE || action.pluginId == 'workflow'
+            ? await (await loadPluginModule(vpd)).setupAndExecute(props)
+            : await Fleet.instance().execute(
+                {
+                  vpd,
+                  labels: { environment: props.environment }
+                },
+                {
+                  orgID: logFields.organizationId,
+                  extraMetricTags: {
+                    [OBS_TAG_ORG_ID]: logFields.organizationId as string
+                  },
+                  extraTraceTags: {
+                    [OBS_TAG_RESOURCE_TYPE]: stepLogFields.resourceType,
+                    [OBS_TAG_RESOURCE_ID]: stepLogFields.resourceId,
+                    [OBS_TAG_RESOURCE_NAME]: stepLogFields.resourceName,
+                    [OBS_TAG_PARENT_TYPE]: stepLogFields.parentType,
+                    [OBS_TAG_PARENT_ID]: stepLogFields.parentId,
+                    [OBS_TAG_PARENT_NAME]: stepLogFields.parentName,
+                    [OBS_TAG_USER_EMAIL]: logFields.userEmail,
+                    [OBS_TAG_CONTROLLER_ID]: SUPERBLOCKS_AGENT_ID,
+                    [OBS_TAG_ENV]: logFields.environment,
+                    [OBS_TAG_CORRELATION_ID]: logFields.correlationId,
+                    [OBS_TAG_ORG_ID]: logFields.organizationId
+                  }
+                },
+                props
+              );
 
         output.children = getChildActionNames(action, actions);
 

@@ -281,7 +281,7 @@ router.post('/exchange-code', async (req: Request, res: Response, next: NextFunc
     let error = '';
     let successful = true;
     try {
-      await exchangeAuthCode(agentCredentials, authType, accessCode, authConfig);
+      await exchangeAuthCode(agentCredentials, authType, accessCode, authConfig, req.headers.origin);
     } catch (err) {
       successful = false;
       error = err.message;

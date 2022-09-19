@@ -26,6 +26,7 @@ import {
 } from './env';
 import { errorHandler } from './middleware/error';
 import { metrics as metricsMiddleware } from './middleware/metrics';
+import { tracing as tracingMiddleware } from './middleware/tracing';
 import healthRouter from './routes/meta/health';
 import routerV1 from './routes/v1';
 import logger from './utils/logger';
@@ -34,8 +35,8 @@ import { SUPPORTED_PLUGIN_VERSIONS_MAP } from './utils/plugins';
 import { registerWithSuperblocksCloud } from './utils/registration';
 import { makeRequest, RequestMethod } from './utils/request';
 import { metrics, ping, scheduledJobsRunner, startSchedules } from './utils/schedule';
+import { default as tracer, getTracer } from './utils/tracer';
 import { buildSuperblocksCloudUrl } from './utils/url';
-import './utils/tracer';
 
 dotenv.config();
 
@@ -53,7 +54,8 @@ if (SUPERBLOCKS_WORKER_ENABLE) {
       limit: SUPERBLOCKS_AGENT_STEP_RETRY_LIMIT
     },
     lazyMatching: !SUPERBLOCKS_WORKER_STRICT_MATCHING,
-    promRegistry: superblocksRegistry
+    promRegistry: superblocksRegistry,
+    tracer: getTracer
   };
 
   if (!SUPERBLOCKS_WORKER_TLS_INSECURE) {
@@ -80,7 +82,7 @@ if (SUPERBLOCKS_WORKER_ENABLE) {
 const app = express();
 app.use(helmet());
 
-app.use(metricsMiddleware(superblocksRegistry));
+app.use(tracingMiddleware(), metricsMiddleware(superblocksRegistry));
 
 // Allow cross-origin requests to the agent with the Authorization header
 // Ref: https://expressjs.com/en/resources/middleware/cors.html#configuration-options
@@ -163,7 +165,7 @@ const signalHandler = async (signal: string): Promise<void> => {
     {
       component: 'job scheduler'
     },
-    'initiating termination'
+    'initiating shutdown'
   );
   const jobShutdown = scheduledJobsRunner.join();
   scheduledJobsRunner.stop();
@@ -197,16 +199,16 @@ const signalHandler = async (signal: string): Promise<void> => {
     {
       component: 'http server'
     },
-    'initiating termination'
+    'initiating shutdown'
   );
   const serverShutdown = new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
 
   try {
     const logger = _logger.child({ component: 'http server' });
     await serverShutdown;
-    logger.info('termination successful');
+    logger.info('shutdown successful');
   } catch (err) {
-    logger.info({ err }, 'termination failed');
+    logger.error({ err }, 'shutdown failed');
   }
 
   await jobShutdown;
@@ -214,8 +216,16 @@ const signalHandler = async (signal: string): Promise<void> => {
     {
       component: 'job scheduler'
     },
-    'termination successful'
+    'shutdown successful'
   );
+
+  try {
+    const logger = _logger.child({ component: 'tracer' });
+    await await tracer.shutdown();
+    logger.info('shutdown successful');
+  } catch (err) {
+    logger.error({ err }, 'shutdown failed');
+  }
 
   process.exit(0);
 };

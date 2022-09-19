@@ -21,7 +21,8 @@ export async function exchangeAuthCode(
   agentCreds: AgentCredentials,
   authType: RestApiIntegrationAuthType,
   accessCode: string,
-  authConfig: AuthConfig
+  authConfig: AuthConfig,
+  origin: string
 ): Promise<void> {
   const clientId = get(authConfig, 'clientId', '');
   const clientSecret = get(authConfig, 'clientSecret', '');
@@ -30,7 +31,7 @@ export async function exchangeAuthCode(
   params.append('code', accessCode ?? '');
   params.append('client_id', clientId);
   params.append('client_secret', clientSecret);
-  params.append('redirect_uri', buildSuperblocksUiUrl(OAUTH_CALLBACK_PATH));
+  params.append('redirect_uri', `${origin}/${OAUTH_CALLBACK_PATH}`);
   params.append('grant_type', 'authorization_code');
   const result = await axios.post(tokenUrl, params, {
     headers: {

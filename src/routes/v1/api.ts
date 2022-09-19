@@ -1,4 +1,5 @@
 import os from 'os';
+import { validateExecuteRequestBody } from '@superblocksteam/schemas';
 import {
   ApiExecutionRequest,
   ApiExecutionResponse,
@@ -36,8 +37,9 @@ router.post('/execute', upload.array('files'), autoReap, async (req: Request, re
   activateKeepAliveProbes(res);
   let isSuccessful = false;
   try {
-    const environment = checkEnvironment(req.query.environment as string);
     const body = req.files ? JSON.parse(req.body.body) : req.body;
+    validateExecuteRequestBody(body);
+    const environment = checkEnvironment(req.query.environment as string);
     const apiRequest = body as ApiExecutionRequest;
     apiRequest.cookies = req.cookies;
 
@@ -69,8 +71,7 @@ router.post('/execute', upload.array('files'), autoReap, async (req: Request, re
     const fetchAndExecuteEnd = Date.now();
 
     // This is set so we can add the proper metrics label.
-    // In the future, we'll have this value in a JWT.
-    res.locals.org_id = orgID;
+    res.locals = { ...res.locals, org_id: orgID };
 
     res.header(CORRELATION_ID, props.metadata.correlationId);
 

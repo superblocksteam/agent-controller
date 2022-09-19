@@ -1,4 +1,4 @@
-import { Metrics } from '@superblocksteam/shared';
+import { Metrics, OBS_TAG_ORG_ID, OBS_TAG_RESOURCE_TYPE, toMetricLabels } from '@superblocksteam/shared';
 import { Response } from 'express';
 import promBundle from 'express-prom-bundle';
 import { Counter, Registry, Summary } from 'prom-client';
@@ -45,7 +45,7 @@ export const apiCount: ExecCounter = new Counter({
 export const apiDuration: Summary = new Summary({
   name: 'superblocks_controller_api_duration_milliseconds',
   help: 'Duration of a Superblocks API, Workflow, or Scheduled Job.',
-  labelNames: ['org_id', 'resource_type', 'result'] as const,
+  labelNames: toMetricLabels([OBS_TAG_ORG_ID, OBS_TAG_RESOURCE_TYPE, 'org_id', 'result']) as string[],
   registers: [superblocksRegistry]
 });
 
@@ -133,17 +133,3 @@ export const sendMetrics = async (): Promise<void> => {
     _logger.error(`Failed to send health metrics to Superblocks Cloud at ${reportedAt}. ${e.stack}`);
   }
 };
-
-export async function time<T>(
-  summary: Summary,
-  labels: Record<string, string>,
-  fn: () => Promise<T>,
-  add: (result: T) => Record<string, string> = (_: T): Record<string, string> => {
-    return {};
-  }
-): Promise<T> {
-  const start: number = Date.now();
-  const result: T = await fn();
-  summary.observe({ ...labels, ...add(result) }, Date.now() - start);
-  return result;
-}

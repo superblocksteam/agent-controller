@@ -90,22 +90,21 @@ export const executeApiFunc = async ({
   try {
     validateApiDefinition(apiDef);
     const apiExecutor = new ApiExecutor();
-    // Let the API execution and event start audit creation run in parallel
-    const apiExecAndAuditStartPromises = await Promise.allSettled([
-      apiExecutor.execute({
-        environment,
-        apiDef,
-        executionParams,
-        authContexts,
-        files,
-        auditLogger: auditLogger.localAuditLogger,
-        recursionContext,
-        forwardedCookies,
-        relayDelegate
-      }),
-      apiRecord.start()
-    ]);
-    const apiResponse = (apiExecAndAuditStartPromises[0] as PromiseFulfilledResult<ApiExecutionResponse>).value;
+
+    // The audit log creation creates a promise that gets awaited on
+    // in the audit log finish/update event.
+    apiRecord.start();
+    const apiResponse = await apiExecutor.execute({
+      environment,
+      apiDef,
+      executionParams,
+      authContexts,
+      files,
+      auditLogger: auditLogger.localAuditLogger,
+      recursionContext,
+      forwardedCookies,
+      relayDelegate
+    });
     return { apiResponse, apiRecord };
   } catch (err) {
     auditLogger.localAuditLogger.error(`API Executor error, ${err}`);

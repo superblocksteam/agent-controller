@@ -13,6 +13,10 @@ envs.addAll([
   // Private environment variables for use with Superblocks Cloud
   // or during development
   {
+    name: '__SUPERBLOCKS_AGENT_DOMAIN',
+    defaultValue: 'superblocks.com'
+  },
+  {
     name: '__SUPERBLOCKS_AGENT_SERVER_URL',
     defaultValue: 'https://app.superblocks.com'
   },
@@ -183,10 +187,6 @@ envs.addAll([
     defaultValue: ''
   },
   {
-    name: '__SUPERBLOCKS_REMOTE_LOGGER_ENABLED',
-    defaultValue: 'true'
-  },
-  {
     name: 'SUPERBLOCKS_AGENT_METRICS_DEFAULT',
     defaultValue: 'true'
   }
@@ -266,8 +266,8 @@ export const SUPERBLOCKS_FILE_SERVER_URL: string =
     : `http://${envs.get('SUPERBLOCKS_AGENT_INTERNAL_HOST')}:${envs.get('SUPERBLOCKS_AGENT_PORT')}/agent/v1/files`;
 export const SUPERBLOCKS_GOOGLE_SHEETS_CLIENT_ID = envs.get('SUPERBLOCKS_GOOGLE_SHEETS_CLIENT_ID');
 export const SUPERBLOCKS_GOOGLE_SHEETS_REDIRECT_PATH = envs.get('SUPERBLOCKS_GOOGLE_SHEETS_REDIRECT_PATH');
-export const SUPERBLOCKS_REMOTE_LOGGER_ENABLED: boolean = envs.get('__SUPERBLOCKS_REMOTE_LOGGER_ENABLED') == 'true';
 export const SUPERBLOCKS_AGENT_METRICS_FORWARD: boolean = SUPERBLOCKS_AGENT_TYPE !== 0;
 export const SUPERBLOCKS_AGENT_METRICS_DEFAULT: boolean = envs.get('SUPERBLOCKS_AGENT_METRICS_DEFAULT') == 'true';
+export const SUPERBLOCKS_AGENT_DOMAIN: string = envs.get('__SUPERBLOCKS_AGENT_DOMAIN');
 
 export default envs;
