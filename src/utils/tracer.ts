@@ -1,13 +1,15 @@
 import { Tracer, trace } from '@opentelemetry/api';
+import { JaegerExporter } from '@opentelemetry/exporter-jaeger';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { JaegerPropagator } from '@opentelemetry/propagator-jaeger';
 import { Resource } from '@opentelemetry/resources';
-import { ConsoleSpanExporter, BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { BatchSpanProcessor, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { AGENT_KEY_HEADER, buildSuperblocksDomainURL } from '@superblocksteam/shared';
-import { EnvStore } from '@superblocksteam/shared';
+import { EnvStore, OBS_TAG_CONTROLLER_ID } from '@superblocksteam/shared';
 import dotenv from 'dotenv';
-import { SUPERBLOCKS_AGENT_DOMAIN } from '../env';
+import { SUPERBLOCKS_AGENT_DOMAIN, SUPERBLOCKS_AGENT_KEY, SUPERBLOCKS_AGENT_VERSION_EXTERNAL, SUPERBLOCKS_AGENT_ID } from '../env';
 
 dotenv.config();
 
@@ -34,13 +36,6 @@ envs.addAll([
   {
     name: '__SUPERBLOCKS_AGENT_INTAKE_TRACES_PATH',
     defaultValue: ''
-  },
-  {
-    name: 'SUPERBLOCKS_AGENT_VERSION_EXTERNAL',
-    defaultValue: 'v0.0.0'
-  },
-  {
-    name: 'SUPERBLOCKS_AGENT_KEY'
   }
 ]);
 
@@ -48,16 +43,17 @@ const provider = new NodeTracerProvider({
   resource: Resource.default().merge(
     new Resource({
       [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
-      [SemanticResourceAttributes.SERVICE_VERSION]: envs.get('SUPERBLOCKS_AGENT_VERSION_EXTERNAL')
+      [SemanticResourceAttributes.SERVICE_VERSION]: SUPERBLOCKS_AGENT_VERSION_EXTERNAL,
+      [OBS_TAG_CONTROLLER_ID]: SUPERBLOCKS_AGENT_ID
     })
   )
 });
 
 provider.addSpanProcessor(
-  new BatchSpanProcessor(
-    envs.get('__SUPERBLOCKS_AGENT_INTAKE_TRACES_ENABLE') !== 'true'
-      ? new ConsoleSpanExporter()
-      : new OTLPTraceExporter({
+  envs.get('__SUPERBLOCKS_AGENT_INTAKE_TRACES_ENABLE') !== 'true'
+    ? new SimpleSpanProcessor(new JaegerExporter())
+    : new BatchSpanProcessor(
+        new OTLPTraceExporter({
           url: buildSuperblocksDomainURL({
             domain: SUPERBLOCKS_AGENT_DOMAIN,
             subdomain: 'traces.intake',
@@ -67,16 +63,21 @@ provider.addSpanProcessor(
             hostOverride: envs.get('__SUPERBLOCKS_AGENT_INTAKE_TRACES_HOST')
           }),
           headers: {
-            [AGENT_KEY_HEADER]: envs.get('SUPERBLOCKS_AGENT_KEY')
+            [AGENT_KEY_HEADER]: SUPERBLOCKS_AGENT_KEY
           }
         }),
-    {} // tune batch options here
-  )
+        {} // tune batch options here
+      )
 );
-provider.register();
+
+provider.register({
+  propagator: new JaegerPropagator()
+});
+
+// TODO - DIAGS (SEE EXAMLES FOR HOW TO)
 
 export function getTracer(): Tracer {
-  return trace.getTracer(serviceName, envs.get('SUPERBLOCKS_AGENT_VERSION_EXTERNAL'));
+  return trace.getTracer(serviceName, SUPERBLOCKS_AGENT_VERSION_EXTERNAL);
 }
 
 export default provider;

@@ -7,7 +7,8 @@ import {
   SUPERBLOCKS_AGENT_ID,
   SUPERBLOCKS_AGENT_URL,
   SUPERBLOCKS_AGENT_VERSION,
-  SUPERBLOCKS_AGENT_VERSION_EXTERNAL
+  SUPERBLOCKS_AGENT_VERSION_EXTERNAL,
+  SUPERBLOCKS_AGENT_ALLOWED_PLUGINS
 } from '../env';
 import { agentHealthManager } from '../global';
 
@@ -19,11 +20,11 @@ export const getLiveness = (_: Request, res: Response): void => {
 
 export const getHealth = (_: Request, res: Response): void => {
   const workers: WorkerStatus[] = Fleet.instance().info();
-  const numWorkers = workers.filter((worker) => !worker.cordoned).length;
+  const isWorkerFleetReady: boolean = Fleet.instance().ready(SUPERBLOCKS_AGENT_ALLOWED_PLUGINS);
 
   const data: Health = {
     uptime: process.uptime(),
-    message: `${numWorkers > 0 ? 'Ok' : 'Not Ready'} - ${numWorkers} available worker${numWorkers === 1 ? '' : 's'}`,
+    message: `${isWorkerFleetReady ? 'Ok' : 'Not Ready'} - ${workers.length} available worker${workers.length === 1 ? '' : 's'}`,
     date: new Date(),
     id: SUPERBLOCKS_AGENT_ID,
     url: SUPERBLOCKS_AGENT_URL,
@@ -42,5 +43,5 @@ export const getHealth = (_: Request, res: Response): void => {
     data.server_errors = agentHealthManager.getServerErrors();
   }
 
-  res.status(numWorkers > 0 ? 200 : 400).send(data);
+  res.status(isWorkerFleetReady ? 200 : 400).send(data);
 };

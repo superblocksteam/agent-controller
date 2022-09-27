@@ -3,6 +3,7 @@ import {
   OBS_TAG_HTTP_URL,
   OBS_TAG_NET_PEER_IP,
   OBS_TAG_ORG_ID,
+  OBS_TAG_ORG_NAME,
   OBS_TAG_HTTP_METHOD,
   OBS_TAG_HTTP_ROUTE,
   OBS_TAG_HTTP_STATUS_CODE,
@@ -18,8 +19,8 @@ import { getTracer } from '../utils/tracer';
 export const tracing = (): RequestHandler => {
   const parser = new UrlValueParser();
 
-  return async (req: Request, res: Response, next: NextFunction) => {
-    getTracer().startActiveSpan(
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    return await getTracer().startActiveSpan(
       `${req.method} ${parser.replacePathValues(`${req.path}`, '#val')}`,
       {
         attributes: {
@@ -41,7 +42,8 @@ export const tracing = (): RequestHandler => {
         res.on('close', function () {
           span.setAttributes({
             [OBS_TAG_HTTP_STATUS_CODE]: res.statusCode,
-            [OBS_TAG_ORG_ID]: res.locals?.org_id
+            [OBS_TAG_ORG_ID]: res.locals?.org_id,
+            [OBS_TAG_ORG_NAME]: res.locals?.org_name
           });
 
           if (req.route?.path) {
@@ -53,7 +55,5 @@ export const tracing = (): RequestHandler => {
         });
       }
     );
-
-    // next();
   };
 };

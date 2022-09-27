@@ -1,13 +1,13 @@
 import { OBS_TAG_ORG_ID, OBS_TAG_HTTP_METHOD, OBS_TAG_HTTP_ROUTE, OBS_TAG_HTTP_STATUS_CODE, toMetricLabels } from '@superblocksteam/shared';
 import { NextFunction, Request, Response, RequestHandler } from 'express';
-import { Registry, Summary } from 'prom-client';
+import { Registry, Histogram } from 'prom-client';
 import UrlValueParser from 'url-value-parser';
 
 export const metrics = (registry: Registry): RequestHandler => {
-  const duration = new Summary({
+  const duration = new Histogram({
     name: 'superblocks_controller_http_request_duration_milliseconds',
     help: 'Duration of an HTTP request.',
-    percentiles: [0.5, 0.9, 0.95, 0.99, 1],
+    buckets: [250, 500, 750, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000],
     labelNames: toMetricLabels([
       OBS_TAG_ORG_ID,
       OBS_TAG_HTTP_METHOD,

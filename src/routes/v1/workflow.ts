@@ -51,6 +51,7 @@ router.post('/:apiId', async (req: Request, res: Response, next: NextFunction) =
     // This is set so we can add the proper metrics label.
     // In the future, we'll have this value in a JWT.
     res.locals.org_id = apiDef.organizationId;
+    res.locals.org_name = apiDef.metadata?.organizationName;
 
     const props = {
       metadata: {

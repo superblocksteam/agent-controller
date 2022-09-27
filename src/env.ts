@@ -74,10 +74,6 @@ envs.addAll([
     defaultValue: 'true'
   },
   {
-    name: 'SUPERBLOCKS_AGENT_DATADOG_CONNECT_TAGS',
-    defaultValue: 'app:superblocks'
-  },
-  {
     name: 'SUPERBLOCKS_AGENT_ENABLE_SCHEDULE_POLLING',
     defaultValue: 'true'
   },
@@ -189,6 +185,11 @@ envs.addAll([
   {
     name: 'SUPERBLOCKS_AGENT_METRICS_DEFAULT',
     defaultValue: 'true'
+  },
+  {
+    name: 'SUPERBLOCKS_AGENT_ALLOWED_PLUGINS',
+    defaultValue:
+      'bigquery,dynamodb,email,graphql,gsheets,javascript,mariadb,mongodb,mssql,mysql,postgres,python,redshift,restapi,restapiintegration,rockset,s3,snowflake,workflow'
   }
 ]);
 
@@ -269,5 +270,6 @@ export const SUPERBLOCKS_GOOGLE_SHEETS_REDIRECT_PATH = envs.get('SUPERBLOCKS_GOO
 export const SUPERBLOCKS_AGENT_METRICS_FORWARD: boolean = SUPERBLOCKS_AGENT_TYPE !== 0;
 export const SUPERBLOCKS_AGENT_METRICS_DEFAULT: boolean = envs.get('SUPERBLOCKS_AGENT_METRICS_DEFAULT') == 'true';
 export const SUPERBLOCKS_AGENT_DOMAIN: string = envs.get('__SUPERBLOCKS_AGENT_DOMAIN');
+export const SUPERBLOCKS_AGENT_ALLOWED_PLUGINS: string[] = envs.get('SUPERBLOCKS_AGENT_ALLOWED_PLUGINS').split(',');
 
 export default envs;

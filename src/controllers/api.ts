@@ -1,11 +1,14 @@
 import { constants } from 'http2';
+import { SpanKind, Span } from '@opentelemetry/api';
 import {
+  apiTriggerToEntity,
   ApiDefinition,
   ApiExecutionResponse,
   AuthContext,
   DiagnosticMetadataTags,
   ExecutionContext,
   ExecutionParam,
+  EventEntityType,
   HttpError,
   NotFoundError,
   RbacUnauthorizedError,
@@ -14,7 +17,9 @@ import {
   userAccessibleTokens,
   ForwardedCookies,
   FORWARDED_COOKIE_PREFIX,
-  FORWARDED_COOKIE_DELIMITER
+  FORWARDED_COOKIE_DELIMITER,
+  OBS_TAG_ENV,
+  OBS_TAGS
 } from '@superblocksteam/shared';
 import { FetchAndExecuteProps, RelayDelegate, RequestFiles } from '@superblocksteam/shared-backend';
 import ApiExecutor, { RecursionContext } from '../api/ApiExecutor';
@@ -24,6 +29,7 @@ import { forwardAgentDiagnostics } from '../utils/diagnostics';
 import { addDiagnosticTagsToError } from '../utils/error';
 import logger from '../utils/logger';
 import { makeRequest, RequestMethod } from '../utils/request';
+import { getTracer } from '../utils/tracer';
 import { buildSuperblocksCloudUrl } from '../utils/url';
 
 interface FetchApiProps {
@@ -57,12 +63,44 @@ export const fetchApi = async ({
   relayDelegate
 }: FetchApiProps): Promise<ApiDefinition> => {
   try {
-    return await makeRequest<ApiDefinition>({
-      agentCredentials: agentCredentials,
-      method: RequestMethod.POST,
-      url: buildSuperblocksCloudUrl(`${isWorkflow ? 'workflows' : 'api'}/${apiId}?isPublished=${isPublished}&environment=${environment}`),
-      relayDelegate
-    });
+    return await getTracer().startActiveSpan(
+      `FETCH`,
+      {
+        attributes: {
+          [OBS_TAG_ENV]: environment,
+          [OBS_TAGS.RESOURCE_ID]: apiId
+        },
+        kind: SpanKind.SERVER
+      },
+      async (span: Span): Promise<ApiDefinition> => {
+        try {
+          const response: ApiDefinition = await makeRequest<ApiDefinition>({
+            agentCredentials: agentCredentials,
+            method: RequestMethod.POST,
+            url: buildSuperblocksCloudUrl(
+              `${isWorkflow ? 'workflows' : 'api'}/${apiId}?isPublished=${isPublished}&environment=${environment}`
+            ),
+            relayDelegate
+          });
+
+          const { api, organizationId, metadata } = response;
+          const entity: EventEntityType = apiTriggerToEntity(api.triggerType);
+
+          span.setAttributes({
+            [OBS_TAGS.ORG_ID]: organizationId,
+            [OBS_TAGS.ORG_NAME]: metadata?.organizationName,
+            [OBS_TAGS.RESOURCE_NAME]: api?.actions?.name,
+            [OBS_TAGS.USER_EMAIL]: metadata?.requester,
+            [OBS_TAGS.RESOURCE_TYPE]: entity
+          });
+
+          span.updateName(`FETCH ${entity}`);
+          return response;
+        } finally {
+          span.end();
+        }
+      }
+    );
   } catch (err) {
     addDiagnosticTagsToError(err, { apiId });
     throw err;

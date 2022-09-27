@@ -31,6 +31,7 @@ import {
   RestApiIntegrationAuthType,
   RestApiIntegrationDatasourceConfiguration,
   OBS_TAG_ORG_ID,
+  OBS_TAG_ORG_NAME,
   OBS_TAG_RESOURCE_TYPE,
   OBS_TAG_RESOURCE_ID,
   OBS_TAG_RESOURCE_NAME,
@@ -118,6 +119,7 @@ export default class ApiExecutor {
       resourceId: apiDef.api.id,
       resourceName: actions.name,
       organizationId: apiDef.organizationId,
+      organizationName: apiDef.metadata.organizationName,
       userEmail: apiDef.metadata?.requester || undefined,
       controllerId: SUPERBLOCKS_AGENT_ID,
       correlationId: metadata?.correlationId,
@@ -160,13 +162,14 @@ export default class ApiExecutor {
         [OBS_TAG_RESOURCE_NAME]: logFields.resourceName,
         [OBS_TAG_USER_EMAIL]: logFields.userEmail,
         [OBS_TAG_ORG_ID]: logFields.organizationId,
+        [OBS_TAG_ORG_NAME]: logFields.organizationName,
         [OBS_TAG_CONTROLLER_ID]: SUPERBLOCKS_AGENT_ID,
         [OBS_TAG_ENV]: environment,
         [OBS_TAG_CORRELATION_ID]: metadata?.correlationId
       };
 
       const execContext: ExecutionContext = await getTracer().startActiveSpan(
-        logFields.resourceType,
+        `EXECUTE ${logFields.resourceType}`,
         {
           attributes: traceTags,
           kind: SpanKind.SERVER
@@ -443,7 +446,7 @@ export default class ApiExecutor {
                     [OBS_TAG_CONTROLLER_ID]: SUPERBLOCKS_AGENT_ID,
                     [OBS_TAG_ENV]: logFields.environment,
                     [OBS_TAG_CORRELATION_ID]: logFields.correlationId,
-                    [OBS_TAG_ORG_ID]: logFields.organizationId
+                    [OBS_TAG_ORG_NAME]: logFields.organizationName
                   }
                 },
                 props

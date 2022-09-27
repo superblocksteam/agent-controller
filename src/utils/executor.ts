@@ -9,6 +9,7 @@ import {
   SUPERBLOCKS_AGENT_EXECUTION_PYTHON_TIMEOUT_MS,
   SUPERBLOCKS_AGENT_EXECUTION_REST_API_TIMEOUT_MS
 } from '../env';
+import { getTracer } from '../utils/tracer';
 import logger from './logger';
 import { agentSupportsPluginVersion, SUPPORTED_PLUGIN_VERSIONS_MAP } from './plugins';
 
@@ -51,6 +52,7 @@ export async function loadPluginModule(vpd: VersionedPluginDefinition): Promise<
   //        This is what the worker does. However, this code is temporary
   //        and it's the current behavior anyways.
   plugin.attachLogger(logger.child({ plugin_name: vpd.name, plugin_version: version }));
+  plugin.attachTracer(getTracer());
   plugin.configure({
     javascriptExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_JS_TIMEOUT_MS,
     pythonExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_PYTHON_TIMEOUT_MS,

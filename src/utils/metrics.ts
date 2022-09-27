@@ -1,7 +1,7 @@
 import { Metrics, OBS_TAG_ORG_ID, OBS_TAG_RESOURCE_TYPE, toMetricLabels } from '@superblocksteam/shared';
 import { Response } from 'express';
 import promBundle from 'express-prom-bundle';
-import { Counter, Registry, Summary } from 'prom-client';
+import { Counter, Registry, Histogram } from 'prom-client';
 import * as si from 'systeminformation';
 import { SUPERBLOCKS_AGENT_VERSION, SUPERBLOCKS_AGENT_VERSION_EXTERNAL, SUPERBLOCKS_AGENT_METRICS_DEFAULT } from '../env';
 import logger from './logger';
@@ -42,9 +42,10 @@ export const apiCount: ExecCounter = new Counter({
   registers: [superblocksRegistry]
 });
 
-export const apiDuration: Summary = new Summary({
+export const apiDuration: Histogram = new Histogram({
   name: 'superblocks_controller_api_duration_milliseconds',
   help: 'Duration of a Superblocks API, Workflow, or Scheduled Job.',
+  buckets: [250, 500, 750, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000, 256000],
   labelNames: toMetricLabels([OBS_TAG_ORG_ID, OBS_TAG_RESOURCE_TYPE, 'org_id', 'result']) as string[],
   registers: [superblocksRegistry]
 });

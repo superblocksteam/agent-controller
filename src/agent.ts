@@ -2,7 +2,6 @@ import { readFileSync } from 'fs';
 import { RetryableError, Retry } from '@superblocksteam/shared';
 import { Fleet, Options } from '@superblocksteam/worker';
 import compression from 'compression';
-import datadog from 'connect-datadog';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
@@ -113,14 +112,6 @@ if (envs.get('SUPERBLOCKS_AGENT_COMPRESSION_DISABLE') !== 'true') {
   app.use(compression());
 }
 
-// Datadog middleware must be before router
-app.use(
-  datadog({
-    response_code: true,
-    tags: envs.get('SUPERBLOCKS_AGENT_DATADOG_CONNECT_TAGS').split(',')
-  })
-);
-
 // Configure prometheus metrics middleware
 app.use(prom);
 
@@ -187,6 +178,7 @@ const signalHandler = async (signal: string): Promise<void> => {
             url: buildSuperblocksCloudUrl()
           });
         } catch (err) {
+          // TODO(frank): fail fast on certain errors (i.e. could not authorize agent)
           throw new RetryableError(err.message);
         }
       }
