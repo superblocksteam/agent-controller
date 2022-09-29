@@ -119,7 +119,7 @@ export default class ApiExecutor {
       resourceId: apiDef.api.id,
       resourceName: actions.name,
       organizationId: apiDef.organizationId,
-      organizationName: apiDef.metadata.organizationName,
+      organizationName: apiDef.metadata?.organizationName,
       userEmail: apiDef.metadata?.requester || undefined,
       controllerId: SUPERBLOCKS_AGENT_ID,
       correlationId: metadata?.correlationId,
