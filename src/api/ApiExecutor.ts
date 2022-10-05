@@ -41,7 +41,8 @@ import {
   OBS_TAG_CORRELATION_ID,
   OBS_TAG_PARENT_TYPE,
   OBS_TAG_PARENT_ID,
-  OBS_TAG_PARENT_NAME
+  OBS_TAG_PARENT_NAME,
+  OBS_TAG_EVENT_TYPE
 } from '@superblocksteam/shared';
 import {
   buildContextFromBindings,
@@ -82,6 +83,7 @@ type ExecutionProps = {
   apiDef: ApiDefinition;
   executionParams: ExecutionParam[];
   environment: string;
+  eventType?: string;
   authContexts: AuthContext;
   files: RequestFiles;
   auditLogger: P.Logger;
@@ -102,6 +104,7 @@ export default class ApiExecutor {
     apiDef,
     executionParams,
     environment,
+    eventType,
     authContexts,
     files,
     auditLogger,
@@ -123,7 +126,8 @@ export default class ApiExecutor {
       userEmail: apiDef.metadata?.requester || undefined,
       controllerId: SUPERBLOCKS_AGENT_ID,
       correlationId: metadata?.correlationId,
-      environment
+      environment,
+      eventType
     };
 
     if (apiDef.api.triggerType === ApiTriggerType.UI) {
@@ -433,7 +437,8 @@ export default class ApiExecutor {
                 {
                   orgID: logFields.organizationId,
                   extraMetricTags: {
-                    [OBS_TAG_ORG_ID]: logFields.organizationId as string
+                    [OBS_TAG_ORG_ID]: logFields.organizationId as string,
+                    [OBS_TAG_EVENT_TYPE]: logFields.eventType as string
                   },
                   extraTraceTags: {
                     [OBS_TAG_RESOURCE_TYPE]: stepLogFields.resourceType,

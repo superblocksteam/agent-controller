@@ -7,6 +7,7 @@ import dependencies from '../dependencies';
 import {
   SUPERBLOCKS_AGENT_EXECUTION_JS_TIMEOUT_MS,
   SUPERBLOCKS_AGENT_EXECUTION_PYTHON_TIMEOUT_MS,
+  SUPERBLOCKS_AGENT_EXECUTION_REST_API_MAX_CONTENT_LENGTH_BYTES,
   SUPERBLOCKS_AGENT_EXECUTION_REST_API_TIMEOUT_MS
 } from '../env';
 import { getTracer } from '../utils/tracer';
@@ -57,6 +58,7 @@ export async function loadPluginModule(vpd: VersionedPluginDefinition): Promise<
     javascriptExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_JS_TIMEOUT_MS,
     pythonExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_PYTHON_TIMEOUT_MS,
     restApiExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_REST_API_TIMEOUT_MS,
+    restApiMaxContentLengthBytes: SUPERBLOCKS_AGENT_EXECUTION_REST_API_MAX_CONTENT_LENGTH_BYTES,
     workflowFetchAndExecuteFunc: async (props: FetchAndExecuteProps) => {
       return (await fetchAndExecute(props)).apiResponse;
     }

@@ -43,6 +43,7 @@ interface FetchApiProps {
 
 interface ExecuteApiProps {
   environment: string;
+  eventType?: string;
   apiDef: ApiDefinition;
   isPublished: boolean;
   recursionContext: RecursionContext;
@@ -112,6 +113,7 @@ export const fetchApi = async ({
  */
 export const executeApiFunc = async ({
   environment,
+  eventType,
   apiDef,
   executionParams = [],
   parentAuthContexts = {},
@@ -134,6 +136,7 @@ export const executeApiFunc = async ({
     apiRecord.start();
     const apiResponse = await apiExecutor.execute({
       environment,
+      eventType,
       apiDef,
       executionParams,
       authContexts,
@@ -155,6 +158,7 @@ export const fetchAndExecute = async ({
   apiId,
   isPublished,
   environment,
+  eventType,
   agentCredentials,
   files,
   cookies,
@@ -255,6 +259,7 @@ export const fetchAndExecute = async ({
   const executeStart = Date.now();
   const { apiResponse, apiRecord } = await executeApiFunc({
     environment,
+    eventType,
     apiDef,
     executionParams,
     parentAuthContexts,

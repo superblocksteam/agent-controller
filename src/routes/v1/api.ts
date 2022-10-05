@@ -40,6 +40,7 @@ router.post('/execute', upload.array('files'), autoReap, async (req: Request, re
     const body = req.files ? JSON.parse(req.body.body) : req.body;
     validateExecuteRequestBody(body);
     const environment = checkEnvironment(req.query.environment as string);
+    const eventType = req.query.eventType as string;
     const apiRequest = body as ApiExecutionRequest;
     apiRequest.cookies = req.cookies;
 
@@ -57,6 +58,7 @@ router.post('/execute', upload.array('files'), autoReap, async (req: Request, re
       apiId: apiRequest.apiId,
       isPublished: apiRequest.viewMode,
       environment,
+      eventType,
       executionParams: apiRequest.params,
       agentCredentials,
       files: req.files,
