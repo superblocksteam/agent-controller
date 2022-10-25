@@ -152,7 +152,7 @@ envs.addAll([
   },
   {
     name: 'SUPERBLOCKS_AGENT_STEP_RETRY_FACTOR',
-    defaultValue: '2'
+    defaultValue: '1'
   },
   {
     name: 'SUPERBLOCKS_AGENT_STEP_RETRY_JITTER',

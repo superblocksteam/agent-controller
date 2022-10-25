@@ -15,13 +15,13 @@ import {
   isPluginTestable,
   NotFoundError,
   Plugin,
+  PostUserTokenRequestDto,
   RestApiDatasourceConfiguration,
   RestApiIntegrationAuthType,
-  TokenType,
-  PostUserTokenRequestDto
+  TokenType
 } from '@superblocksteam/shared';
 import { RelayDelegate } from '@superblocksteam/shared-backend';
-import { Fleet } from '@superblocksteam/worker';
+import { Fleet, Selector } from '@superblocksteam/worker';
 import { get, isDate } from 'lodash';
 import { evaluateDatasource } from '../api/datasourceEvaluation';
 import { APP_ENV_VAR_KEY, getAppEnvVars } from '../api/env';
@@ -78,18 +78,11 @@ export const getMetadata = async (
   );
 
   try {
-    return await Fleet.instance().metadata(
-      {
-        vpd: {
-          name: getBasePluginId(plugin.id),
-          version: datasourceConfig.superblocksMetadata?.pluginVersion
-        },
-        labels: { environment }
-      },
-      {},
-      datasourceConfig,
-      actionConfiguration
-    );
+    const pluginName = getBasePluginId(plugin.id);
+    const pluginVersion = datasourceConfig.superblocksMetadata?.pluginVersion;
+    const labels = { environment };
+    const selector = Selector.Exact({ pluginName, pluginVersion, labels });
+    return await Fleet.instance().metadata(selector, {}, datasourceConfig, actionConfiguration);
   } catch (e) {
     const err = new IntegrationError(`Failed to load the plugin metadata. Cause: ${e}`);
     addDiagnosticTagsToError(err, { pluginId: plugin.id, datasourceId: datasourceId });
@@ -143,17 +136,12 @@ export const testConnection = async (
       relayDelegate
     );
 
-    await Fleet.instance().test(
-      {
-        vpd: {
-          name: getBasePluginId(plugin.id),
-          version: datasourceConfig.superblocksMetadata?.pluginVersion
-        },
-        labels: { environment }
-      },
-      {},
-      datasourceConfig
-    );
+    const pluginName = getBasePluginId(plugin.id);
+    const pluginVersion = datasourceConfig.superblocksMetadata?.pluginVersion;
+    const labels = { environment };
+    const selector = Selector.Exact({ pluginName, pluginVersion, labels });
+
+    await Fleet.instance().test(selector, {}, datasourceConfig);
 
     return { success: true, message: 'Test successful' };
   } catch (e) {
@@ -356,17 +344,12 @@ export const preDelete = async (
     relayDelegate
   );
 
-  await Fleet.instance().preDelete(
-    {
-      vpd: {
-        name: getBasePluginId(plugin.id),
-        version: datasourceConfig.superblocksMetadata?.pluginVersion
-      },
-      labels: { environment }
-    },
-    {},
-    datasourceConfig
-  );
+  const pluginName = getBasePluginId(plugin.id);
+  const pluginVersion = datasourceConfig.superblocksMetadata?.pluginVersion;
+  const labels = { environment };
+  const selector = Selector.Exact({ pluginName, pluginVersion, labels });
+
+  await Fleet.instance().preDelete(selector, {}, datasourceConfig);
 
   return { success: true };
 };

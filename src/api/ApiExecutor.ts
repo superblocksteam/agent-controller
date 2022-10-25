@@ -1,4 +1,4 @@
-import { SpanKind, SpanStatusCode, Span } from '@opentelemetry/api';
+import { SpanKind, SpanStatusCode, Span, context as ctx, propagation } from '@opentelemetry/api';
 import {
   Action,
   ActionType,
@@ -22,38 +22,39 @@ import {
   getBasePluginId,
   getChildActionIds,
   Global,
-  GoogleSheetsAuthType,
   GOOGLE_SHEETS_PLUGIN_ID,
+  GoogleSheetsAuthType,
   IntegrationError,
   InternalServerError,
   LogFields,
   NotFoundError,
-  RestApiIntegrationAuthType,
-  RestApiIntegrationDatasourceConfiguration,
+  OBS_TAG_CONTROLLER_ID,
+  OBS_TAG_CORRELATION_ID,
+  OBS_TAG_ENV,
+  OBS_TAG_EVENT_TYPE,
   OBS_TAG_ORG_ID,
   OBS_TAG_ORG_NAME,
-  OBS_TAG_RESOURCE_TYPE,
-  OBS_TAG_RESOURCE_ID,
-  OBS_TAG_RESOURCE_NAME,
-  OBS_TAG_USER_EMAIL,
-  OBS_TAG_CONTROLLER_ID,
-  OBS_TAG_ENV,
-  OBS_TAG_CORRELATION_ID,
-  OBS_TAG_PARENT_TYPE,
   OBS_TAG_PARENT_ID,
   OBS_TAG_PARENT_NAME,
-  OBS_TAG_EVENT_TYPE
+  OBS_TAG_PARENT_TYPE,
+  OBS_TAG_RESOURCE_ID,
+  OBS_TAG_RESOURCE_NAME,
+  OBS_TAG_RESOURCE_TYPE,
+  OBS_TAG_USER_EMAIL,
+  RestApiIntegrationAuthType,
+  RestApiIntegrationDatasourceConfiguration
 } from '@superblocksteam/shared';
 import {
   buildContextFromBindings,
   ExecutionMeta,
+  observe,
   PluginProps,
   RelayDelegate,
   RequestFiles,
   resolveConfigurationRecursive,
-  observe
+  getBaggageFromObject
 } from '@superblocksteam/shared-backend';
-import { Fleet, VersionedPluginDefinition } from '@superblocksteam/worker';
+import { Fleet, Selector, VersionedPluginDefinition } from '@superblocksteam/worker';
 import { cloneDeep, get, isEmpty } from 'lodash';
 import P from 'pino';
 import { SUPERBLOCKS_AGENT_ID, SUPERBLOCKS_FILE_SERVER_URL, SUPERBLOCKS_WORKER_ENABLE } from '../env';
@@ -421,41 +422,49 @@ export default class ApiExecutor {
           forwardedCookies
         };
 
+        const pluginName = getBasePluginId(action.pluginId);
+        const pluginVersion = action.configuration?.superblocksMetadata?.pluginVersion;
+        const labels = { environment: props.environment };
+        const selector = Selector.Exact({ pluginName, pluginVersion, labels });
+
         const vpd: VersionedPluginDefinition = {
           name: getBasePluginId(action.pluginId),
           version: action.configuration?.superblocksMetadata?.pluginVersion
         };
 
-        const output: ExecutionOutput =
-          !SUPERBLOCKS_WORKER_ENABLE || action.pluginId == 'workflow'
-            ? await (await loadPluginModule(vpd)).setupAndExecute(props)
-            : await Fleet.instance().execute(
-                {
-                  vpd,
-                  labels: { environment: props.environment }
-                },
-                {
-                  orgID: logFields.organizationId,
-                  extraMetricTags: {
-                    [OBS_TAG_ORG_ID]: logFields.organizationId as string,
-                    [OBS_TAG_EVENT_TYPE]: logFields.eventType as string
+        // Set common trace tags as baggage to be propagated to the worker
+        const baggageEntries = getBaggageFromObject({
+          [OBS_TAG_RESOURCE_TYPE]: stepLogFields.resourceType,
+          [OBS_TAG_RESOURCE_ID]: stepLogFields.resourceId,
+          [OBS_TAG_RESOURCE_NAME]: stepLogFields.resourceName,
+          [OBS_TAG_PARENT_TYPE]: stepLogFields.parentType,
+          [OBS_TAG_PARENT_ID]: stepLogFields.parentId,
+          [OBS_TAG_PARENT_NAME]: stepLogFields.parentName,
+          [OBS_TAG_USER_EMAIL]: logFields.userEmail,
+          [OBS_TAG_CONTROLLER_ID]: SUPERBLOCKS_AGENT_ID,
+          [OBS_TAG_ENV]: logFields.environment,
+          [OBS_TAG_CORRELATION_ID]: logFields.correlationId,
+          [OBS_TAG_ORG_NAME]: logFields.organizationName
+        });
+
+        const output: ExecutionOutput = await ctx.with(
+          propagation.setBaggage(ctx.active(), propagation.createBaggage(baggageEntries)),
+          async () => {
+            return !SUPERBLOCKS_WORKER_ENABLE || action.pluginId == 'workflow'
+              ? await (await loadPluginModule(vpd)).setupAndExecute(props)
+              : await Fleet.instance().execute(
+                  selector,
+                  {
+                    orgID: logFields.organizationId,
+                    extraMetricTags: {
+                      [OBS_TAG_ORG_ID]: logFields.organizationId as string,
+                      [OBS_TAG_EVENT_TYPE]: logFields.eventType as string
+                    }
                   },
-                  extraTraceTags: {
-                    [OBS_TAG_RESOURCE_TYPE]: stepLogFields.resourceType,
-                    [OBS_TAG_RESOURCE_ID]: stepLogFields.resourceId,
-                    [OBS_TAG_RESOURCE_NAME]: stepLogFields.resourceName,
-                    [OBS_TAG_PARENT_TYPE]: stepLogFields.parentType,
-                    [OBS_TAG_PARENT_ID]: stepLogFields.parentId,
-                    [OBS_TAG_PARENT_NAME]: stepLogFields.parentName,
-                    [OBS_TAG_USER_EMAIL]: logFields.userEmail,
-                    [OBS_TAG_CONTROLLER_ID]: SUPERBLOCKS_AGENT_ID,
-                    [OBS_TAG_ENV]: logFields.environment,
-                    [OBS_TAG_CORRELATION_ID]: logFields.correlationId,
-                    [OBS_TAG_ORG_NAME]: logFields.organizationName
-                  }
-                },
-                props
-              );
+                  props
+                );
+          }
+        );
 
         output.children = getChildActionNames(action, actions);
 

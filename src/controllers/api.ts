@@ -65,7 +65,7 @@ export const fetchApi = async ({
 }: FetchApiProps): Promise<ApiDefinition> => {
   try {
     return await getTracer().startActiveSpan(
-      `FETCH`,
+      'FETCH',
       {
         attributes: {
           [OBS_TAG_ENV]: environment,

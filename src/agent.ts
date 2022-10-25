@@ -1,5 +1,5 @@
 import { readFileSync } from 'fs';
-import { RetryableError, Retry } from '@superblocksteam/shared';
+import { Retry, RetryableError } from '@superblocksteam/shared';
 import { Fleet, Options } from '@superblocksteam/worker';
 import compression from 'compression';
 import cors from 'cors';
@@ -10,6 +10,7 @@ import helmet from 'helmet';
 import {
   default as envs,
   SUPERBLOCKS_AGENT_KEY,
+  SUPERBLOCKS_AGENT_METRICS_FORWARD,
   SUPERBLOCKS_AGENT_STEP_RETRY_DURATION,
   SUPERBLOCKS_AGENT_STEP_RETRY_FACTOR,
   SUPERBLOCKS_AGENT_STEP_RETRY_JITTER,
@@ -20,8 +21,7 @@ import {
   SUPERBLOCKS_WORKER_TLS_CA_FILE,
   SUPERBLOCKS_WORKER_TLS_CERT_FILE,
   SUPERBLOCKS_WORKER_TLS_INSECURE,
-  SUPERBLOCKS_WORKER_TLS_KEY_FILE,
-  SUPERBLOCKS_AGENT_METRICS_FORWARD
+  SUPERBLOCKS_WORKER_TLS_KEY_FILE
 } from './env';
 import { errorHandler } from './middleware/error';
 import { metrics as metricsMiddleware } from './middleware/metrics';
@@ -29,7 +29,7 @@ import { tracing as tracingMiddleware } from './middleware/tracing';
 import healthRouter from './routes/meta/health';
 import routerV1 from './routes/v1';
 import logger from './utils/logger';
-import { prom, superblocksRegistry, sendMetrics } from './utils/metrics';
+import { prom, sendMetrics, superblocksRegistry } from './utils/metrics';
 import { SUPPORTED_PLUGIN_VERSIONS_MAP } from './utils/plugins';
 import { registerWithSuperblocksCloud } from './utils/registration';
 import { makeRequest, RequestMethod } from './utils/request';
@@ -136,15 +136,6 @@ const signalHandler = async (signal: string): Promise<void> => {
   const _logger = logger.child({ who: 'signal handler', signal });
   _logger.info('received signal');
 
-  // NOTE(frank): This might be problematic because I'm not sure
-  //              if having this agent as deactivate will negatively affect
-  //              any of the following behavior. Ideally, it'd occur after
-  //              everthing is stopped but there's a fatal error that causes
-  //              that line to never be run in some cases.
-  //
-  // stop sending heartbeats to the server
-  ping.stop();
-
   if (SUPERBLOCKS_AGENT_METRICS_FORWARD) {
     // stop sending metrics to the server
     metrics.stop();
@@ -160,32 +151,6 @@ const signalHandler = async (signal: string): Promise<void> => {
   );
   const jobShutdown = scheduledJobsRunner.join();
   scheduledJobsRunner.stop();
-
-  // deregister this agent
-  try {
-    await new Retry<void>({
-      backoff: {
-        duration: 1000,
-        factor: 2,
-        jitter: 0.5,
-        limit: 5
-      },
-      logger: logger.child({ who: 'deregister' }),
-      func: async (): Promise<void> => {
-        try {
-          await makeRequest<Response>({
-            method: RequestMethod.DELETE,
-            url: buildSuperblocksCloudUrl()
-          });
-        } catch (err) {
-          // TODO(frank): fail fast on certain errors (i.e. could not authorize agent)
-          throw new RetryableError(err.message);
-        }
-      }
-    }).do();
-  } catch (err) {
-    logger.error({ err }, 'could not deregister controller');
-  }
 
   _logger.info(
     {
@@ -210,6 +175,40 @@ const signalHandler = async (signal: string): Promise<void> => {
     },
     'shutdown successful'
   );
+
+  // Stop sending heartbeats to the server after the job scheduler
+  // and http server have been shutdown. If we do it before, and the
+  // inflight APIs/jobs take more than a certain amount of time to finish,
+  // the server will mark the controller as deactivated which is
+  // undesirable.
+  ping.stop();
+
+  // deregister this agent after all scheduled jobs have finished and the http server connections
+  // have been closed.
+  try {
+    await new Retry<void>({
+      backoff: {
+        duration: 1000,
+        factor: 2,
+        jitter: 0.5,
+        limit: 5
+      },
+      logger: logger.child({ who: 'deregister' }),
+      func: async (): Promise<void> => {
+        try {
+          await makeRequest<Response>({
+            method: RequestMethod.DELETE,
+            url: buildSuperblocksCloudUrl()
+          });
+        } catch (err) {
+          // TODO(frank): fail fast on certain errors (i.e. could not authorize agent)
+          throw new RetryableError(err.message);
+        }
+      }
+    }).do();
+  } catch (err) {
+    logger.error({ err }, 'could not deregister controller');
+  }
 
   try {
     const logger = _logger.child({ component: 'tracer' });
@@ -236,5 +235,10 @@ process.on('SIGTERM', signalHandler);
 // This signal will be sent by Nodemon when it restarts the process.
 // kill -31 <pid>
 process.on('SIGUSR2', signalHandler);
+
+process.on('uncaughtException', (err, next) => {
+  logger.error(`Uncaught error found. ${err}\n${err.stack}`);
+  return;
+});
 
 export default app;
