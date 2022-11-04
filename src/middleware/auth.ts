@@ -7,7 +7,7 @@ import { extractAuthHeaderFromRequest } from '../utils/request';
  * @param allowAuthInQueryParams If the endpoint allows user to specify the authentication token
  *   in request query parameter, as an alternative of specifying the token in the request header.
  */
-export const verifyAuth = (allowAuthInQueryParams = false) => async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export const verifyAuth = (allowAuthInQueryParams = false) => (req: Request, res: Response, next: NextFunction): void => {
   try {
     const authHeader = extractAuthHeaderFromRequest(req, allowAuthInQueryParams);
     // Header format should be:
@@ -22,7 +22,7 @@ export const verifyAuth = (allowAuthInQueryParams = false) => async (req: Reques
   return next();
 };
 
-export const verifyFile = () => async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export const verifyFile = () => (req: Request, res: Response, next: NextFunction): void => {
   const key: string = req.headers[AGENT_KEY_HEADER]?.toString();
   const location: string = req.query?.location?.toString();
 

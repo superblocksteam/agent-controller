@@ -1,4 +1,4 @@
-import { ApiDefinition, ApiExecutionResponse, ENVIRONMENT_PRODUCTION } from '@superblocksteam/shared';
+import { ApiDefinition, ApiExecutionResponse, ENVIRONMENT_PRODUCTION, Source } from '@superblocksteam/shared';
 import { Fleet } from '@superblocksteam/worker';
 import { schedule, ScheduledTask } from 'node-cron';
 import { PersistentAuditLogger } from '../utils/audit';
@@ -35,27 +35,29 @@ export class JobScheduler {
 
     this._task = schedule(
       options.polling.frequency,
-      async () => {
-        try {
-          this._numRunning++;
+      () => {
+        (async () => {
+          try {
+            this._numRunning++;
 
-          if (
-            Fleet.instance()
-              .info()
-              .filter((worker) => !worker.cordoned).length === 0
-          ) {
-            options.logger.warn('this controller does not yet have any registered workers');
-            return;
+            if (
+              Fleet.instance()
+                .info()
+                .filter((worker) => !worker.cordoned).length === 0
+            ) {
+              options.logger.warn('this controller does not yet have any registered workers');
+              return;
+            }
+
+            const jitter = Math.floor(Math.random() * options.polling.maxJitterMs);
+            await new Promise((r) => setTimeout(r, jitter));
+            await pollScheduledJobs();
+          } catch (err) {
+            options.logger.error(`Failed to poll schedules: ${err}`);
+          } finally {
+            this._numRunning--;
           }
-
-          const jitter = Math.floor(Math.random() * options.polling.maxJitterMs);
-          await new Promise((r) => setTimeout(r, jitter));
-          await pollScheduledJobs();
-        } catch (err) {
-          options.logger.error(`Failed to poll schedules: ${err}`);
-        } finally {
-          this._numRunning--;
-        }
+        })();
       },
       { scheduled: options.scheduled }
     );
@@ -108,8 +110,7 @@ export const pollScheduledJobs = async (): Promise<ApiExecutionResponse[]> => {
     return [];
   }
 
-  const source = 'Schedule';
-  const pLogger = new PersistentAuditLogger(source);
+  const pLogger = new PersistentAuditLogger(Source.SCHEDULED_JOB);
   try {
     const startTime = Date.now();
     let success = 0;
@@ -122,7 +123,10 @@ export const pollScheduledJobs = async (): Promise<ApiExecutionResponse[]> => {
             environment: ENVIRONMENT_PRODUCTION,
             apiDef,
             isPublished: true,
-            recursionContext: { isEvaluatingDatasource: false, executedWorkflowsPath: [] },
+            recursionContext: {
+              isEvaluatingDatasource: false,
+              executedWorkflowsPath: [{ name: apiDef.api.actions.name, id: apiDef.api.id }]
+            },
             auditLogger: pLogger
           });
           const executeEnd = Date.now();
@@ -133,7 +137,9 @@ export const pollScheduledJobs = async (): Promise<ApiExecutionResponse[]> => {
             executeEnd,
             executeDurationMs: executeEnd - executeStart
           };
-          apiRecord.finish(apiResponse);
+          apiRecord.finish(apiResponse).catch(() => {
+            // Nothing is waiting for this audit log to actually get sent?
+          });
           return apiResponse;
         } catch (e) {
           failure++;

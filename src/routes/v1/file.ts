@@ -3,7 +3,7 @@ import logger from '../../utils/logger';
 
 const router = express.Router();
 
-router.get('/', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/', (req: Request, res: Response, next: NextFunction) => {
   const location: string = req.query.location.toString();
   logger.info({ location }, 'request for file received');
 

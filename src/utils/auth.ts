@@ -1,4 +1,4 @@
-import { AuthConfig, AuthType, DatasourceDto, TokenScope, TokenType } from '@superblocksteam/shared';
+import { AuthConfig, AuthType, DatasourceDto, IntegrationError, TokenScope, TokenType } from '@superblocksteam/shared';
 import { refreshUserTokenOnAgent, refreshUserTokenOnServer } from '../controllers/auth';
 import { fetchPerUserToken, fetchUserToken } from '../controllers/datasource';
 import { SUPERBLOCKS_AGENT_EAGER_REFRESH_THRESHOLD_MS } from '../env';
@@ -39,14 +39,14 @@ export async function getOrRefreshToken(
   }
   if (!token) {
     if (authConfig.refreshTokenFromServer) {
-      const newUserToken = refreshUserTokenOnServer(agentCredentials, authType, authConfig, datasource);
+      const newUserToken = await refreshUserTokenOnServer(agentCredentials, authType, authConfig, datasource);
       if (!newUserToken) {
-        throw new Error(`Failed to refresh a token on server`);
+        throw new IntegrationError(`Failed to refresh a token on server`);
       }
       return newUserToken;
     } else {
-      if (!refreshUserTokenOnAgent(agentCredentials, authType, authConfig, token)) {
-        throw new Error(`Failed to refresh a token on agent`);
+      if (!(await refreshUserTokenOnAgent(agentCredentials, authType, authConfig, token))) {
+        throw new IntegrationError(`Failed to refresh a token on agent`);
       }
     }
     token = await fetchUserToken({

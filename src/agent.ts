@@ -122,103 +122,107 @@ app.use('/', healthRouter);
 app.use('/agent/v1', routerV1);
 
 const port = envs.get('SUPERBLOCKS_AGENT_PORT');
-const server = app.listen(Number(port), '0.0.0.0', async () => {
+const server = app.listen(Number(port), '0.0.0.0', () => {
   logger.info(`Your Superblocks agent is live and listening on port ${port}.`);
 
   logger.debug(`This agent supports the following Superblocks plugins: ${JSON.stringify(SUPPORTED_PLUGIN_VERSIONS_MAP)}`);
 
   // Agent self-registration
-  await registerWithSuperblocksCloud();
-  startSchedules();
+  (async () => {
+    await registerWithSuperblocksCloud();
+    startSchedules();
+  })();
 });
 
-const signalHandler = async (signal: string): Promise<void> => {
-  const _logger = logger.child({ who: 'signal handler', signal });
-  _logger.info('received signal');
+const signalHandler = (signal: string): void => {
+  (async () => {
+    const _logger = logger.child({ who: 'signal handler', signal });
+    _logger.info('received signal');
 
-  if (SUPERBLOCKS_AGENT_METRICS_FORWARD) {
-    // stop sending metrics to the server
-    metrics.stop();
-    // send final batch of metrics to the server
-    await sendMetrics();
-  }
+    if (SUPERBLOCKS_AGENT_METRICS_FORWARD) {
+      // stop sending metrics to the server
+      metrics.stop();
+      // send final batch of metrics to the server
+      await sendMetrics();
+    }
 
-  _logger.info(
-    {
-      component: 'job scheduler'
-    },
-    'initiating shutdown'
-  );
-  const jobShutdown = scheduledJobsRunner.join();
-  scheduledJobsRunner.stop();
-
-  _logger.info(
-    {
-      component: 'http server'
-    },
-    'initiating shutdown'
-  );
-  const serverShutdown = new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
-
-  try {
-    const logger = _logger.child({ component: 'http server' });
-    await serverShutdown;
-    logger.info('shutdown successful');
-  } catch (err) {
-    logger.error({ err }, 'shutdown failed');
-  }
-
-  await jobShutdown;
-  _logger.info(
-    {
-      component: 'job scheduler'
-    },
-    'shutdown successful'
-  );
-
-  // Stop sending heartbeats to the server after the job scheduler
-  // and http server have been shutdown. If we do it before, and the
-  // inflight APIs/jobs take more than a certain amount of time to finish,
-  // the server will mark the controller as deactivated which is
-  // undesirable.
-  ping.stop();
-
-  // deregister this agent after all scheduled jobs have finished and the http server connections
-  // have been closed.
-  try {
-    await new Retry<void>({
-      backoff: {
-        duration: 1000,
-        factor: 2,
-        jitter: 0.5,
-        limit: 5
+    _logger.info(
+      {
+        component: 'job scheduler'
       },
-      logger: logger.child({ who: 'deregister' }),
-      func: async (): Promise<void> => {
-        try {
-          await makeRequest<Response>({
-            method: RequestMethod.DELETE,
-            url: buildSuperblocksCloudUrl()
-          });
-        } catch (err) {
-          // TODO(frank): fail fast on certain errors (i.e. could not authorize agent)
-          throw new RetryableError(err.message);
+      'initiating shutdown'
+    );
+    const jobShutdown = scheduledJobsRunner.join();
+    scheduledJobsRunner.stop();
+
+    _logger.info(
+      {
+        component: 'http server'
+      },
+      'initiating shutdown'
+    );
+    const serverShutdown = new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+
+    try {
+      const logger = _logger.child({ component: 'http server' });
+      await serverShutdown;
+      logger.info('shutdown successful');
+    } catch (err) {
+      logger.error({ err }, 'shutdown failed');
+    }
+
+    await jobShutdown;
+    _logger.info(
+      {
+        component: 'job scheduler'
+      },
+      'shutdown successful'
+    );
+
+    // Stop sending heartbeats to the server after the job scheduler
+    // and http server have been shutdown. If we do it before, and the
+    // inflight APIs/jobs take more than a certain amount of time to finish,
+    // the server will mark the controller as deactivated which is
+    // undesirable.
+    ping.stop();
+
+    // deregister this agent after all scheduled jobs have finished and the http server connections
+    // have been closed.
+    try {
+      await new Retry<void>({
+        backoff: {
+          duration: 1000,
+          factor: 2,
+          jitter: 0.5,
+          limit: 5
+        },
+        logger: logger.child({ who: 'deregister' }),
+        func: async (): Promise<void> => {
+          try {
+            await makeRequest<Response>({
+              method: RequestMethod.DELETE,
+              url: buildSuperblocksCloudUrl()
+            });
+          } catch (err) {
+            // TODO(frank): fail fast on certain errors (i.e. could not authorize agent)
+            throw new RetryableError(err.message);
+          }
         }
-      }
-    }).do();
-  } catch (err) {
-    logger.error({ err }, 'could not deregister controller');
-  }
+      }).do();
+    } catch (err) {
+      logger.error({ err }, 'could not deregister controller');
+    }
 
-  try {
-    const logger = _logger.child({ component: 'tracer' });
-    await await tracer.shutdown();
-    logger.info('shutdown successful');
-  } catch (err) {
-    logger.error({ err }, 'shutdown failed');
-  }
+    try {
+      const logger = _logger.child({ component: 'tracer' });
+      await tracer.shutdown();
+      logger.info('shutdown successful');
+    } catch (err) {
+      logger.error({ err }, 'shutdown failed');
+    }
 
-  process.exit(0);
+    process.exit(0);
+  })();
 };
 
 // The error handler must be before any other error middleware and after all controllers

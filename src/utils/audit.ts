@@ -21,7 +21,7 @@ export class ApiRequestRecord {
   nameToAction: Record<string, Action>;
   startPromise: Promise<AuditLogDto>;
 
-  async start(): Promise<void> {
+  start(): void {
     // TODO(taha) Do we need to construct the steps preemptively?
     // This doesn't mean anything and gets populated by the audit finish event later.
     // There are server-side events that rely on this being populated, in the absence
@@ -94,7 +94,7 @@ export class ApiRequestRecord {
     for (const stepName in res?.context?.outputs) {
       const step = res.context.outputs[stepName];
       if (step.error) {
-        return `Error in step "${stepName}": ${step.error}`;
+        return `Error in ${res.context.errorContext.pluginId} step "${stepName}": ${step.error}`;
       }
     }
 

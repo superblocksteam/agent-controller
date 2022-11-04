@@ -208,7 +208,7 @@ export async function refreshOAuthPasswordToken(authConfig: AuthConfig, refreshT
   };
   const result = await axios.post(tokenUrl, {}, { headers });
   if (Math.floor(result.status / 100) !== 2) {
-    throw new Error(`Failed to refresh token with result ${result.status}, err: ${JSON.stringify(result.data)}`);
+    throw new IntegrationError(`Failed to refresh token with result ${result.status}, err: ${JSON.stringify(result.data)}`);
   }
   return {
     access: {

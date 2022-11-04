@@ -20,7 +20,7 @@ export const tracing = (): RequestHandler => {
   const parser = new UrlValueParser();
 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    return await getTracer().startActiveSpan(
+    return getTracer().startActiveSpan(
       `${req.method} ${parser.replacePathValues(`${req.path}`, '#val')}`,
       {
         attributes: {

@@ -134,3 +134,7 @@ export const sendMetrics = async (): Promise<void> => {
     _logger.error(`Failed to send health metrics to Superblocks Cloud at ${reportedAt}. ${e.stack}`);
   }
 };
+
+export const sendMetricsWithoutWaiting = (): void => {
+  void sendMetrics();
+};

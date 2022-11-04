@@ -113,7 +113,9 @@ async function evaluateDynamicDatasource(
       executeEnd,
       executeDurationMs: executeEnd - executeStart
     };
-    apiRecord.finish(apiResponse);
+    apiRecord.finish(apiResponse).catch(() => {
+      // TODO: No error handling
+    });
 
     try {
       Object.values(apiResponse.context.outputs).forEach((output) => {

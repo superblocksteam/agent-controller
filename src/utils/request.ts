@@ -136,23 +136,25 @@ export async function makeAuditLogRequest<R>(method: RequestMethod, url: string,
 }
 
 // Diagnostic log requests don't throw errors
-export async function makeDiagnosticLogRequest(payload: DiagnosticMetadata): Promise<void> {
-  const startTime = Date.now();
-  const url = buildSuperblocksCloudUrl('diagnostics');
-  try {
-    const req: AxiosRequestConfig = {
-      method: RequestMethod.POST,
-      url,
-      data: payload,
-      headers: setAgentHeaders()
-    };
-    await axios(req);
-  } catch (e) {
-    logger.error(`Diagnostic logging request failed: ${e.message}`);
-    parseAndRecordError(e);
-  } finally {
-    logger.info(`Diagnostic logging request to ${url} finished in ${Date.now() - startTime}ms`);
-  }
+export function makeDiagnosticLogRequest(payload: DiagnosticMetadata): void {
+  (async () => {
+    const startTime = Date.now();
+    const url = buildSuperblocksCloudUrl('diagnostics');
+    try {
+      const req: AxiosRequestConfig = {
+        method: RequestMethod.POST,
+        url,
+        data: payload,
+        headers: setAgentHeaders()
+      };
+      await axios(req);
+    } catch (e) {
+      logger.error(`Diagnostic logging request failed: ${e.message}`);
+      parseAndRecordError(e);
+    } finally {
+      logger.info(`Diagnostic logging request to ${url} finished in ${Date.now() - startTime}ms`);
+    }
+  })();
 }
 
 const nonRetryableHttpError = new Set([

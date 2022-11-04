@@ -480,12 +480,14 @@ export default class ApiExecutor {
           forwardAgentDiagnostics(new IntegrationError(output.error), tags);
           newContext.errorContext = {
             actionId: action.id,
-            actionName: action.name
+            actionName: action.name,
+            pluginId: action.pluginId
           };
           newContext.error = output.error;
           newRedactedContext.errorContext = {
             actionId: action.id,
-            actionName: action.name
+            actionName: action.name,
+            pluginId: action.pluginId
           };
           newRedactedContext.error = output.error;
           break;

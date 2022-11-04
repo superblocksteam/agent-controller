@@ -99,7 +99,11 @@ router.post('/execute', upload.array('files'), autoReap, async (req: Request, re
       requestEnd,
       requestDurationMs: requestEnd - requestStart
     };
-    if (apiRecord) apiRecord.finish(apiResponse);
+    if (apiRecord) {
+      apiRecord.finish(apiResponse).catch(() => {
+        // TODO: No error handling?
+      });
+    }
 
     res.send(response);
   } catch (err) {

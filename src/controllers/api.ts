@@ -111,6 +111,9 @@ export const fetchApi = async ({
 /**
  * This methods guarantees all errors will be tagged properly.
  */
+// TODO(pbardea): The recursion context here would likely benefit from
+// a refactor that does the push and pop from the context here rather
+// than at all of the call sites.
 export const executeApiFunc = async ({
   environment,
   eventType,
@@ -204,11 +207,16 @@ export const fetchAndExecute = async ({
   }
   const fetchEnd = Date.now();
 
-  // If executing workflow, update execution path to check for cycles
-  if (isWorkflow) {
-    recursionContext.executedWorkflowsPath.push({ id: apiDef.api.id, name: apiDef.api.actions.name });
+  let source = apiDef.metadata?.requester ?? 'Unknown';
+  // TODO: We can also store the full call stack in the audit log record for
+  // future usage. Deferring this for now though. We currently just show the
+  // last caller as a quick win without needing to update the UI too much. It
+  // also keeps the source as a simple string, but it could be extended in the
+  // future to be a more complex object.
+  if (recursionContext.executedWorkflowsPath.length > 0) {
+    source = 'Nested call from ' + recursionContext.executedWorkflowsPath[recursionContext.executedWorkflowsPath.length - 1].name;
   }
-  const source = apiDef.metadata?.requester ?? 'Unknown';
+  recursionContext.executedWorkflowsPath.push({ id: apiDef.api.id, name: apiDef.api.actions.name });
   const pLogger = new PersistentAuditLogger(source);
 
   // TODO(taha) skip if no rest api steps
@@ -285,15 +293,11 @@ export const fetchAndExecute = async ({
     };
   }
 
-  // If executed workflow successfully, remove self from execution path as there was no cycle
-  if (isWorkflow) {
-    // Should always be last item in list
-    const idx = recursionContext.executedWorkflowsPath.findIndex((workflow) => workflow.id === apiDef.api.id);
-    if (idx !== recursionContext.executedWorkflowsPath.length - 1) {
-      logger.error('Bad state removing self from workflows path');
-    }
-    recursionContext.executedWorkflowsPath.splice(idx);
+  const idx = recursionContext.executedWorkflowsPath.findIndex((workflow) => workflow.id === apiDef.api.id);
+  if (idx !== recursionContext.executedWorkflowsPath.length - 1) {
+    logger.error('Bad state removing self from workflows path');
   }
+  recursionContext.executedWorkflowsPath.splice(idx);
   return { apiResponse, apiRecord, orgID: apiDef.organizationId };
 };
 

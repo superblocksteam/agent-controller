@@ -60,10 +60,16 @@ export async function loadPluginModule(vpd: VersionedPluginDefinition): Promise<
     restApiExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_REST_API_TIMEOUT_MS,
     restApiMaxContentLengthBytes: SUPERBLOCKS_AGENT_EXECUTION_REST_API_MAX_CONTENT_LENGTH_BYTES,
     workflowFetchAndExecuteFunc: async (props: FetchAndExecuteProps) => {
-      return (await fetchAndExecute(props)).apiResponse;
+      const { apiResponse, apiRecord } = await fetchAndExecute(props);
+      if (apiRecord) {
+        apiRecord.finish(apiResponse).catch(() => {
+          // TODO: No error handling?
+        });
+      }
+      return apiResponse;
     }
   });
-  await plugin.init();
+  plugin.init();
 
   return plugin;
 }
