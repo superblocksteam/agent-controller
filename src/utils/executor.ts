@@ -55,6 +55,8 @@ export async function loadPluginModule(vpd: VersionedPluginDefinition): Promise<
   plugin.attachLogger(logger.child({ plugin_name: vpd.name, plugin_version: version }));
   plugin.attachTracer(getTracer());
   plugin.configure({
+    // no connection pooling happens in the agent, so this value is not used anywhere
+    connectionPoolIdleTimeoutMs: 0,
     javascriptExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_JS_TIMEOUT_MS,
     pythonExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_PYTHON_TIMEOUT_MS,
     restApiExecutionTimeoutMs: SUPERBLOCKS_AGENT_EXECUTION_REST_API_TIMEOUT_MS,
